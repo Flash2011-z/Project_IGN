@@ -26,18 +26,30 @@ export default function Navbar() {
         </Link>
 
         <nav style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <NavLink to="/" style={({ isActive }) => ({ opacity: isActive ? 1 : 0.75, fontWeight: 700 })}>
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+          >
             Home
           </NavLink>
-          <NavLink to="/games" style={({ isActive }) => ({ opacity: isActive ? 1 : 0.75, fontWeight: 700 })}>
+
+          <NavLink
+            to="/games"
+            className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+          >
             Games
           </NavLink>
         </nav>
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
           <input className="input" placeholder="Search games..." style={{ width: 260 }} />
-          <Link to="/login" className="btn">Login</Link>
-          <Link to="/register" className="btn primary">Register</Link>
+          <Link to="/login" className="btn">
+            Login
+          </Link>
+          <Link to="/register" className="btn primary">
+            Register
+          </Link>
         </div>
       </div>
     </header>

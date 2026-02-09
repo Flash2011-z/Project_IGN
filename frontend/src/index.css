@@ -136,3 +136,45 @@ a{ color:inherit; text-decoration:none; }
   border-radius: 16px;
   backdrop-filter: blur(10px);
 }
+
+/* Navbar hover for links */
+.nav-link{
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-weight: 800;
+  opacity: 0.78;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, border 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+
+.nav-link:hover{
+  opacity: 1;
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.14);
+  transform: translateY(-1px);
+}
+
+.nav-link.active{
+  opacity: 1;
+  background: rgba(255,45,85,0.16);
+  border-color: rgba(255,45,85,0.35);
+}
+
+/* Button variants for premium look */
+.btn.ghost{
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.14);
+}
+.btn.ghost:hover{
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.22);
+}
+
+.btn.subtle{
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.14);
+}
+.btn.subtle:hover{
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.22);
+}
