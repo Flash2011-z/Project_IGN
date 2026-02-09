@@ -1,42 +1,91 @@
-#root {
-  max-width: 1280px;
+:root{
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: #eaeaf0;
+  background: #0b0c10;
+}
+
+*{ box-sizing:border-box; }
+body{ margin:0; }
+
+a{ color:inherit; text-decoration:none; }
+
+.container{
+  max-width: 1150px;
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  padding: 0 16px;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.muted{ color: rgba(234,234,240,0.75); }
+
+.card{
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  backdrop-filter: blur(10px);
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.grid{
+  display:grid;
+  gap: 14px;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.btn{
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.10);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor:pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border 0.15s ease;
 }
 
-.card {
-  padding: 2em;
+.btn:hover{
+  transform: translateY(-1px);
+  background: rgba(255,255,255,0.16);
+  border-color: rgba(255,255,255,0.28);
 }
 
-.read-the-docs {
-  color: #888;
+.btn.primary{
+  background: #ff2d55;
+  border-color: #ff2d55;
 }
+
+.btn.primary:hover{
+  background: #ff466b;
+  border-color: #ff466b;
+}
+
+.input{
+  width:100%;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  outline:none;
+}
+
+.input::placeholder{ color: rgba(234,234,240,0.55); }
+
+.input:focus{
+  border-color: rgba(255,45,85,0.75);
+}
+
+.badge{
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.08);
+}
+
+.shadow-hover{
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.shadow-hover:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.45);
+}
+
