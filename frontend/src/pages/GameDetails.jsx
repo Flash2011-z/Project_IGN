@@ -1,6 +1,26 @@
 import { Link, useParams } from "react-router-dom";
 import { useMemo, useState } from "react";
 
+const PLACEHOLDER =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="800">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#0b0c10"/>
+        <stop offset="1" stop-color="#1f2330"/>
+      </linearGradient>
+    </defs>
+    <rect width="1400" height="800" fill="url(#g)"/>
+    <text x="70" y="180" fill="#ffffff" font-family="Arial" font-size="74" font-weight="700" opacity="0.9">
+      Game Cover
+    </text>
+    <text x="70" y="260" fill="#ffffff" font-family="Arial" font-size="34" opacity="0.65">
+      Image unavailable — placeholder shown
+    </text>
+  </svg>
+`);
+
 const gamesData = [
   {
     id: 1,
@@ -39,7 +59,8 @@ const gamesData = [
     genres: ["RPG", "Action"],
     platforms: ["PC", "PS", "Xbox"],
     developer: "CD PROJEKT RED",
-    cover: "https://images.wallpapersden.com/image/download/cyberpunk-2077-new-key-art_bGpoZm2UmZqaraWkpJRmbmdlrWZlbWU.jpg",
+    cover:
+      "https://images.wallpapersden.com/image/download/cyberpunk-2077-new-key-art_bGpoZm2UmZqaraWkpJRmbmdlrWZlbWU.jpg",
     accent: "#f7d000",
     description:
       "A neon-drenched RPG with build variety, stylish combat, and a dense urban world to explore. Craft your playstyle and dive into Night City’s stories.",
@@ -53,7 +74,8 @@ const gamesData = [
     genres: ["RPG", "Action", "Open World"],
     platforms: ["PC", "PS", "Xbox"],
     developer: "FromSoftware",
-    cover: "https://images.wallpapersden.com/image/download/elden-ring-hd-gaming-2022_bWdlZm2UmZqaraWkpJRmbmdlrWZlbWU.jpg",
+    cover:
+      "https://images.wallpapersden.com/image/download/elden-ring-hd-gaming-2022_bWdlZm2UmZqaraWkpJRmbmdlrWZlbWU.jpg",
     accent: "#c8a43a",
     description:
       "A massive fantasy world full of mystery, tough bosses, and rewarding exploration. Discover secrets, build your character, and conquer legendary foes.",
@@ -67,7 +89,8 @@ const gamesData = [
     genres: ["RPG", "Adventure"],
     platforms: ["PC", "PS", "Xbox", "Switch"],
     developer: "CD PROJEKT RED",
-    cover: "https://images.wallpapersden.com/image/download/the-witcher-3-wild-hunt_am5tbGWUmZqaraWkpJRmZWVlZa1pbmhq.jpg",
+    cover:
+      "https://images.wallpapersden.com/image/download/the-witcher-3-wild-hunt_am5tbGWUmZqaraWkpJRmZWVlZa1pbmhq.jpg",
     accent: "#59a3ff",
     description:
       "A story-driven RPG with memorable quests and characters. Track monsters, make tough decisions, and explore a world full of life.",
@@ -81,7 +104,8 @@ const gamesData = [
     genres: ["Action", "Adventure"],
     platforms: ["PC", "PS"],
     developer: "Santa Monica Studio",
-    cover: "https://images.wallpapersden.com/image/download/kratos-and-atreus-in-god-of-war-ragnarok_bmdlaWuUmZqaraWkpJRobWllrWdma2U.jpg",
+    cover:
+      "https://images.wallpapersden.com/image/download/kratos-and-atreus-in-god-of-war-ragnarok_bmdlaWuUmZqaraWkpJRobWllrWdma2U.jpg",
     accent: "#ff7a18",
     description:
       "A powerful mythic journey with cinematic combat and one of the strongest narratives in modern games.",
@@ -95,7 +119,8 @@ const gamesData = [
     genres: ["Roguelike", "Action"],
     platforms: ["PC", "PS", "Xbox", "Switch"],
     developer: "Supergiant Games",
-    cover: "https://images.wallpapersden.com/image/download/hades-game-2018_a2hpbGmUmZqaraWkpJRnam1lrWZpamU.jpg",
+    cover:
+      "https://images.wallpapersden.com/image/download/hades-game-2018_a2hpbGmUmZqaraWkpJRnam1lrWZpamU.jpg",
     accent: "#ff3b30",
     description:
       "Fast, satisfying roguelike combat with amazing voice acting and replay value.",
@@ -109,7 +134,8 @@ const gamesData = [
     genres: ["Sandbox", "Survival"],
     platforms: ["PC", "Mobile", "Console"],
     developer: "Mojang",
-    cover: "https://images.wallpapersden.com/image/download/minecraft_a2VlbWeUmZqaraWkpJRoaGtlrWdmZWU.jpg",
+    cover:
+      "https://images.wallpapersden.com/image/download/minecraft_a2VlbWeUmZqaraWkpJRoaGtlrWdmZWU.jpg",
     accent: "#2ecc71",
     description:
       "Build anything, survive nights, and create worlds—timeless sandbox freedom.",
@@ -152,6 +178,26 @@ function safeInt(value) {
   return n;
 }
 
+function clamp(n, min, max) {
+  if (n < min) return min;
+  if (n > max) return max;
+  return n;
+}
+
+function CoverImg({ src, alt, style }) {
+  const [imgSrc, setImgSrc] = useState(src || PLACEHOLDER);
+
+  return (
+    <img
+      src={imgSrc}
+      alt={alt}
+      loading="lazy"
+      onError={() => setImgSrc(PLACEHOLDER)}
+      style={style}
+    />
+  );
+}
+
 export default function GameDetails() {
   const params = useParams();
   const gameId = safeInt(params.id);
@@ -169,10 +215,49 @@ export default function GameDetails() {
   const [score, setScore] = useState("9.0");
   const [text, setText] = useState("");
 
+  const [reviewSort, setReviewSort] = useState("new"); // new | top
+
+  // Wishlist (local)
+  const [wishlist, setWishlist] = useState(() => {
+    try {
+      const raw = localStorage.getItem("ign_wishlist");
+      const arr = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(arr)) return arr;
+      return [];
+    } catch {
+      return [];
+    }
+  });
+
+  function saveWishlist(next) {
+    setWishlist(next);
+    try {
+      localStorage.setItem("ign_wishlist", JSON.stringify(next));
+    } catch {}
+  }
+
+  function toggleWish(id) {
+    const exists = wishlist.indexOf(id) !== -1;
+    if (exists) saveWishlist(wishlist.filter((x) => x !== id));
+    else saveWishlist([id].concat(wishlist));
+  }
+
+  const wished = game ? wishlist.indexOf(game.id) !== -1 : false;
+
   const gameReviews = useMemo(() => {
     if (!game) return [];
-    return reviews.filter((r) => r.gameId === game.id);
-  }, [reviews, game]);
+    const list = reviews.filter((r) => r.gameId === game.id);
+
+    if (reviewSort === "top") {
+      return list.slice(0).sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return String(b.date).localeCompare(String(a.date));
+      });
+    }
+
+    // new
+    return list.slice(0).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  }, [reviews, game, reviewSort]);
 
   const avgScore = useMemo(() => {
     if (!game) return 0;
@@ -181,6 +266,8 @@ export default function GameDetails() {
     for (let i = 0; i < gameReviews.length; i++) sum += gameReviews[i].score;
     return Math.round((sum / gameReviews.length) * 10) / 10;
   }, [game, gameReviews]);
+
+  const ratingFill = useMemo(() => clamp((avgScore / 10) * 100, 0, 100), [avgScore]);
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -208,6 +295,29 @@ export default function GameDetails() {
     setName("");
     setScore("9.0");
     setText("");
+  }
+
+  function handleShare() {
+    if (!game) return;
+    const url = window.location.href;
+
+    if (navigator.share) {
+      navigator
+        .share({
+          title: game.title,
+          text: "Check this game:",
+          url: url,
+        })
+        .catch(() => {});
+      return;
+    }
+
+    try {
+      navigator.clipboard.writeText(url);
+      alert("Link copied!");
+    } catch {
+      alert(url);
+    }
   }
 
   if (gameId === null) {
@@ -249,6 +359,21 @@ export default function GameDetails() {
         <div className="muted" style={{ fontWeight: 800 }}>
           Games / <span style={{ color: "#fff" }}>{game.title}</span>
         </div>
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button type="button" className="btn subtle" onClick={handleShare}>
+            Share
+          </button>
+
+          <button
+            type="button"
+            className={"btn subtle " + (wished ? "activePillBtn" : "")}
+            onClick={() => toggleWish(game.id)}
+            title={wished ? "Remove from wishlist" : "Add to wishlist"}
+          >
+            {wished ? "♥ Wishlisted" : "♡ Wishlist"}
+          </button>
+        </div>
       </div>
 
       {/* Hero poster */}
@@ -257,42 +382,110 @@ export default function GameDetails() {
           className="poster"
           style={{
             height: 380,
-            backgroundImage: `url(${game.cover})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            display: "flex",
-            alignItems: "end",
+            position: "relative",
+            overflow: "hidden",
           }}
         >
-          <div style={{ padding: 16, width: "100%" }}>
-            <div className="glass" style={{ display: "flex", gap: 12, alignItems: "center", padding: "10px 12px", justifyContent: "space-between" }}>
-              <div>
-                <div className="muted" style={{ fontWeight: 900 }}>
-                  {game.subtitle} • {game.year}
-                </div>
-                <h1 style={{ margin: "6px 0 0", fontSize: 36, fontWeight: 950, letterSpacing: -0.7 }}>{game.title}</h1>
-              </div>
+          {/* Use image fallback instead of background-image */}
+          <CoverImg
+            src={game.cover}
+            alt={game.title}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+              transform: "scale(1.02)",
+            }}
+          />
 
+          {/* overlay shade is already handled by .poster::before in your CSS */}
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "end" }}>
+            <div style={{ padding: 16, width: "100%" }}>
               <div
+                className="glass"
                 style={{
-                  fontWeight: 950,
-                  background: game.accent,
-                  color: "#0b0c10",
-                  padding: "10px 14px",
-                  borderRadius: 999,
-                  minWidth: 92,
-                  textAlign: "center",
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                  padding: "10px 12px",
+                  justifyContent: "space-between",
                 }}
               >
-                {avgScore}
+                <div>
+                  <div className="muted" style={{ fontWeight: 900 }}>
+                    {game.subtitle} • {game.year}
+                  </div>
+                  <h1 style={{ margin: "6px 0 0", fontSize: 36, fontWeight: 950, letterSpacing: -0.7 }}>
+                    {game.title}
+                  </h1>
+
+                  {/* tiny premium rating bar */}
+                  <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div
+                      style={{
+                        height: 8,
+                        width: 180,
+                        borderRadius: 999,
+                        background: "rgba(255,255,255,0.10)",
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: ratingFill + "%",
+                          background: game.accent,
+                        }}
+                      />
+                    </div>
+                    <div className="muted" style={{ fontWeight: 800 }}>
+                      Community score
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    fontWeight: 950,
+                    background: game.accent,
+                    color: "#0b0c10",
+                    padding: "10px 14px",
+                    borderRadius: 999,
+                    minWidth: 92,
+                    textAlign: "center",
+                  }}
+                >
+                  {avgScore}
+                </div>
               </div>
             </div>
           </div>
+
+          {/* corner wishlist icon (optional, feels premium) */}
+          <button
+            type="button"
+            className={"wishBtn " + (wished ? "active" : "")}
+            onClick={() => toggleWish(game.id)}
+            title={wished ? "Remove from wishlist" : "Add to wishlist"}
+            style={{ position: "absolute", top: 12, right: 12 }}
+          >
+            {wished ? "♥" : "♡"}
+          </button>
         </div>
       </section>
 
       {/* Details */}
-      <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 14, alignItems: "start" }}>
+      <div
+        style={{
+          marginTop: 14,
+          display: "grid",
+          gridTemplateColumns: "1.2fr 0.8fr",
+          gap: 14,
+          alignItems: "start",
+        }}
+      >
         <div className="card">
           <h2 style={{ marginTop: 0, fontWeight: 950, letterSpacing: -0.3 }}>Overview</h2>
           <p className="text-premium" style={{ marginTop: 8 }}>
@@ -303,6 +496,7 @@ export default function GameDetails() {
             {game.genres.map((tag) => (
               <span
                 key={tag}
+                className="chip"
                 style={{
                   padding: "6px 10px",
                   borderRadius: 999,
@@ -318,22 +512,29 @@ export default function GameDetails() {
           </div>
         </div>
 
-        <div className="card">
+        {/* Sticky info card on desktop (premium feel) */}
+        <div className="card" style={{ position: "sticky", top: 12 }}>
           <h3 style={{ marginTop: 0, fontWeight: 950 }}>Game Info</h3>
 
           <div style={{ display: "grid", gap: 10 }}>
             <div className="glass" style={{ padding: 12 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>Developer</div>
+              <div className="muted" style={{ fontWeight: 900 }}>
+                Developer
+              </div>
               <div style={{ fontWeight: 900 }}>{game.developer}</div>
             </div>
 
             <div className="glass" style={{ padding: 12 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>Platforms</div>
+              <div className="muted" style={{ fontWeight: 900 }}>
+                Platforms
+              </div>
               <div style={{ fontWeight: 900 }}>{game.platforms.join(", ")}</div>
             </div>
 
             <div className="glass" style={{ padding: 12 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>Release Year</div>
+              <div className="muted" style={{ fontWeight: 900 }}>
+                Release Year
+              </div>
               <div style={{ fontWeight: 900 }}>{game.year}</div>
             </div>
 
@@ -349,10 +550,26 @@ export default function GameDetails() {
         <div className="card">
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <h2 style={{ margin: 0, fontWeight: 950, letterSpacing: -0.3 }}>Reviews</h2>
-            <span className="muted" style={{ fontWeight: 800 }}>({gameReviews.length})</span>
-            <span style={{ marginLeft: "auto" }} className="muted">
-              Avg: <b style={{ color: "#fff" }}>{avgScore}</b>/10
+            <span className="muted" style={{ fontWeight: 800 }}>
+              ({gameReviews.length})
             </span>
+
+            <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="muted">
+                Avg: <b style={{ color: "#fff" }}>{avgScore}</b>/10
+              </span>
+
+              <select
+                className="input"
+                value={reviewSort}
+                onChange={(e) => setReviewSort(e.target.value)}
+                style={{ width: 170, padding: "9px 10px" }}
+                title="Sort reviews"
+              >
+                <option value="new">Newest first</option>
+                <option value="top">Top rated</option>
+              </select>
+            </div>
           </div>
 
           <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
@@ -378,10 +595,19 @@ export default function GameDetails() {
                     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                       <div style={{ fontWeight: 950 }}>{r.user}</div>
                       <span className="muted">•</span>
-                      <div className="muted" style={{ fontWeight: 800 }}>{r.date}</div>
+                      <div className="muted" style={{ fontWeight: 800 }}>
+                        {r.date}
+                      </div>
 
                       <div style={{ marginLeft: "auto", fontWeight: 950 }}>
-                        <span style={{ background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.14)", padding: "4px 10px", borderRadius: 999 }}>
+                        <span
+                          style={{
+                            background: "rgba(255,255,255,0.10)",
+                            border: "1px solid rgba(255,255,255,0.14)",
+                            padding: "4px 10px",
+                            borderRadius: 999,
+                          }}
+                        >
                           {r.score}
                         </span>
                       </div>
@@ -402,8 +628,19 @@ export default function GameDetails() {
 
           <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
             <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 160px" }}>
-              <input className="input" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
-              <input className="input" placeholder="Score (0-10)" value={score} onChange={(e) => setScore(e.target.value)} />
+              <input
+                className="input"
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+
+              <input
+                className="input"
+                placeholder="Score (0-10)"
+                value={score}
+                onChange={(e) => setScore(e.target.value)}
+              />
             </div>
 
             <textarea

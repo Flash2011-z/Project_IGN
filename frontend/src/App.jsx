@@ -9,6 +9,8 @@ import Register from "./pages/Register";
 import Games from "./pages/Games";
 import GameDetails from "./pages/GameDetails";
 import NotFound from "./pages/NotFound";
+import Wishlist from "./pages/Wishlist";
+import Profile from "./pages/Profile";
 
 export default function App() {
   return (
@@ -26,6 +28,8 @@ export default function App() {
           <Route path="/games/:id" element={<GameDetails />} />
 
           <Route path="*" element={<NotFound />} />
+          <Route path="/wishlist" element={<Wishlist />} />
+      <Route path="/profile" element={<Profile />} />
         </Routes>
       </main>
 
