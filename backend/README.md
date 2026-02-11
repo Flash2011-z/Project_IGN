@@ -1,5 +1,13 @@
 # Backend
 
+## Backend
+
+- Main entry: server.js
+- Start server: npm start
+- Dev mode: npm run dev
+- Mock backend (deprecated): mock_index.js
+
+
 Prerequisites: Node.js (16+), npm, Docker (for database)
 
 Install dependencies and run:
@@ -21,3 +29,5 @@ npm run dev
 ```
 
 Update `DATABASE_URL` in `.env` if needed.
+
+

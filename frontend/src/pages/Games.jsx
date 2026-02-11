@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+
 
 const PLACEHOLDER =
   "data:image/svg+xml;utf8," +
@@ -21,126 +22,6 @@ const PLACEHOLDER =
   </svg>
 `);
 
-const gamesData = [
-  {
-    id: 1,
-    title: "Red Dead Redemption 2",
-    subtitle: "Open-world • Story • Western",
-    score: 9.6,
-    year: 2018,
-    genres: ["Open World", "Action", "Adventure"],
-    platforms: ["PC", "PS", "Xbox"],
-    developer: "Rockstar Games",
-    cover: "https://images.hdqwalls.com/download/red-dead-redemption-2-takes-over-dh-1920x1080.jpg",
-    accent: "#ff2d55",
-    description:
-      "A cinematic open-world western with deep characters, immersive systems, and unforgettable storytelling.",
-  },
-  {
-    id: 2,
-    title: "Grand Theft Auto V",
-    subtitle: "Open-world • Action • Crime",
-    score: 9.2,
-    year: 2013,
-    genres: ["Open World", "Action"],
-    platforms: ["PC", "PS", "Xbox"],
-    developer: "Rockstar Games",
-    cover: "https://images7.alphacoders.com/587/587535.jpg",
-    accent: "#35d07f",
-    description:
-      "A huge sandbox experience with iconic missions, chaotic fun, and a living city that never sleeps.",
-  },
-  {
-    id: 3,
-    title: "Cyberpunk 2077",
-    subtitle: "RPG • Action • Night City",
-    score: 8.8,
-    year: 2020,
-    genres: ["RPG", "Action"],
-    platforms: ["PC", "PS", "Xbox"],
-    developer: "CD PROJEKT RED",
-    cover:
-      "https://images.wallpapersden.com/image/download/cyberpunk-2077-new-key-art_bGpoZm2UmZqaraWkpJRmbmdlrWZlbWU.jpg",
-    accent: "#f7d000",
-    description:
-      "A neon-drenched RPG with build variety, stylish combat, and a dense urban world to explore.",
-  },
-  {
-    id: 4,
-    title: "Elden Ring",
-    subtitle: "Souls-like • Open-world • Fantasy",
-    score: 9.5,
-    year: 2022,
-    genres: ["RPG", "Action", "Open World"],
-    platforms: ["PC", "PS", "Xbox"],
-    developer: "FromSoftware",
-    cover:
-      "https://images.wallpapersden.com/image/download/elden-ring-hd-gaming-2022_bWdlZm2UmZqaraWkpJRmbmdlrWZlbWU.jpg",
-    accent: "#c8a43a",
-    description:
-      "A massive fantasy world full of mystery, tough bosses, and rewarding exploration.",
-  },
-  {
-    id: 5,
-    title: "The Witcher 3: Wild Hunt",
-    subtitle: "RPG • Story • Monster hunting",
-    score: 9.4,
-    year: 2015,
-    genres: ["RPG", "Adventure"],
-    platforms: ["PC", "PS", "Xbox", "Switch"],
-    developer: "CD PROJEKT RED",
-    cover:
-      "https://images.wallpapersden.com/image/download/the-witcher-3-wild-hunt_am5tbGWUmZqaraWkpJRmZWVlZa1pbmhq.jpg",
-    accent: "#59a3ff",
-    description:
-      "One of the best story-driven RPGs ever made—quests, characters, and worldbuilding at the top.",
-  },
-  {
-    id: 6,
-    title: "God of War",
-    subtitle: "Action • Mythology • Narrative",
-    score: 9.1,
-    year: 2018,
-    genres: ["Action", "Adventure"],
-    platforms: ["PC", "PS"],
-    developer: "Santa Monica Studio",
-    cover:
-      "https://images.wallpapersden.com/image/download/poster-of-kratos-god-of-war-ragnaroek_bW5qaWeUmZqaraWkpJRmbmdlrWZrZWU.jpg",
-    accent: "#ff7a18",
-    description:
-      "A powerful mythic journey with cinematic combat and one of the strongest narratives in modern games.",
-  },
-  {
-    id: 7,
-    title: "Hades",
-    subtitle: "Roguelike • Fast combat • Indie",
-    score: 9.0,
-    year: 2020,
-    genres: ["Roguelike", "Action"],
-    platforms: ["PC", "PS", "Xbox", "Switch"],
-    developer: "Supergiant Games",
-    cover:
-      "https://images.wallpapersden.com/image/download/hades-game-2018_a2hpbGmUmZqaraWkpJRnam1lrWZpamU.jpg",
-    accent: "#ff3b30",
-    description:
-      "Fast, satisfying roguelike combat with amazing voice acting and replay value.",
-  },
-  {
-    id: 8,
-    title: "Minecraft",
-    subtitle: "Sandbox • Creativity • Survival",
-    score: 8.9,
-    year: 2011,
-    genres: ["Sandbox", "Survival"],
-    platforms: ["PC", "Mobile", "Console"],
-    developer: "Mojang",
-    cover:
-      "https://images.wallpapersden.com/image/download/minecraft_a2VlbWeUmZqaraWkpJRoaGtlrWdmZWU.jpg",
-    accent: "#2ecc71",
-    description:
-      "Build anything, survive nights, and create worlds—timeless sandbox freedom.",
-  },
-];
 
 function normalize(s) {
   return String(s || "")
@@ -179,16 +60,16 @@ function buildSearchFields(game) {
     year,
     all: normalize(
       game.title +
-        " " +
-        game.subtitle +
-        " " +
-        game.developer +
-        " " +
-        (game.genres || []).join(" ") +
-        " " +
-        (game.platforms || []).join(" ") +
-        " " +
-        String(game.year || "")
+      " " +
+      game.subtitle +
+      " " +
+      game.developer +
+      " " +
+      (game.genres || []).join(" ") +
+      " " +
+      (game.platforms || []).join(" ") +
+      " " +
+      String(game.year || "")
     ),
   };
 }
@@ -260,6 +141,10 @@ function GameCover({ src, alt, onToggleWish, wished }) {
 }
 
 export default function Games() {
+  const [gamesData, setGamesData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
   const [search, setSearch] = useState("");
 
   // ✅ only changed these defaults:
@@ -281,11 +166,28 @@ export default function Games() {
 
   const [wishOnly, setWishOnly] = useState(false);
 
+  useEffect(() => {
+    async function fetchGames() {
+      try {
+        const response = await fetch("http://localhost:3000/games");
+        const data = await response.json();
+        setGamesData(data);
+        setLoading(false);
+      } catch (err) {
+        setError("Failed to fetch games");
+        setLoading(false);
+      }
+    }
+
+    fetchGames();
+  }, []);
+
+
   function saveWishlist(next) {
     setWishlist(next);
     try {
       localStorage.setItem("ign_wishlist", JSON.stringify(next));
-    } catch {}
+    } catch { }
   }
 
   function toggleWish(id) {
@@ -305,7 +207,7 @@ export default function Games() {
       for (let j = 0; j < arr.length; j++) set.add(arr[j]);
     }
     return ["All Genres", ...Array.from(set).sort()];
-  }, []);
+  }, [gamesData]);
 
   const allPlatforms = useMemo(() => {
     const set = new Set();
@@ -314,7 +216,7 @@ export default function Games() {
       for (let j = 0; j < arr.length; j++) set.add(arr[j]);
     }
     return ["All Platforms", ...Array.from(set).sort()];
-  }, []);
+  }, [gamesData]);
 
   const filtered = useMemo(() => {
     let list = gamesData.slice(0);
@@ -360,6 +262,13 @@ export default function Games() {
 
     setMinScore(8.0);
     setWishOnly(false);
+  }
+  if (loading) {
+    return <div className="container">Loading games...</div>;
+  }
+
+  if (error) {
+    return <div className="container">{error}</div>;
   }
 
   return (
@@ -467,6 +376,7 @@ export default function Games() {
           )}
         </div>
       </section>
+
 
       <section className="gamesGrid" style={{ marginTop: 14 }}>
         {filtered.map((g) => {
