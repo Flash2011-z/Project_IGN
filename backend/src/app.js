@@ -11,12 +11,16 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const pool = require("./config/db");
+const path = require("path");
 
 const app = express();
 
 /* Allow frontend to call backend */
 app.use(cors());
 app.use(express.json());
+app.use("/images", express.static("images"));
+
+
 
 /* Health check */
 app.get("/", (req, res) => {
@@ -66,17 +70,19 @@ app.get("/games/:id", async (req, res) => {
         g.avg_score AS score,
         g.release_year AS year,
         g.description,
-        g.cover_url,
-        g.accent_color,
-        ARRAY_AGG(DISTINCT genre.genre_name) AS genres,
-        ARRAY_AGG(DISTINCT platform.platform_name) AS platforms
+        g.cover_url AS cover,
+        g.accent_color AS accent,
+        p.name AS developer,
+        ARRAY_REMOVE(ARRAY_AGG(DISTINCT genre.genre_name), NULL) AS genres,
+        ARRAY_REMOVE(ARRAY_AGG(DISTINCT platform.platform_name), NULL) AS platforms
       FROM game g
+      LEFT JOIN publisher p ON g.publisher_id = p.publisher_id
       LEFT JOIN game_genre gg ON g.game_id = gg.game_id
       LEFT JOIN genre ON gg.genre_id = genre.genre_id
       LEFT JOIN game_platform gp ON g.game_id = gp.game_id
       LEFT JOIN platform ON gp.platform_id = platform.platform_id
       WHERE g.game_id = $1
-      GROUP BY g.game_id
+      GROUP BY g.game_id, p.name
       `,
       [id]
     );
@@ -92,6 +98,7 @@ app.get("/games/:id", async (req, res) => {
   }
 });
 
+
 /* Games list */
 app.get("/games", async (req, res) => {
   try {
@@ -102,18 +109,29 @@ app.get("/games", async (req, res) => {
         g.subtitle,
         g.avg_score AS score,
         g.release_year AS year,
-        g.description,
         g.cover_url AS cover,
         g.accent_color AS accent,
-        ARRAY_AGG(DISTINCT genre.genre_name) AS genres,
-        ARRAY_AGG(DISTINCT platform.platform_name) AS platforms
+        p.name AS developer,
+        COALESCE(
+  ARRAY_REMOVE(ARRAY_AGG(DISTINCT genre.genre_name), NULL),
+  '{}'
+) AS genres,
+
+COALESCE(
+  ARRAY_REMOVE(ARRAY_AGG(DISTINCT platform.platform_name), NULL),
+  '{}'
+) AS platforms
+
       FROM game g
+      LEFT JOIN publisher p ON g.publisher_id = p.publisher_id
       LEFT JOIN game_genre gg ON g.game_id = gg.game_id
       LEFT JOIN genre ON gg.genre_id = genre.genre_id
       LEFT JOIN game_platform gp ON g.game_id = gp.game_id
       LEFT JOIN platform ON gp.platform_id = platform.platform_id
-      GROUP BY g.game_id
+      GROUP BY g.game_id, p.name
+      ORDER BY g.game_id ASC
     `);
+    
 
     res.json(result.rows);
   } catch (err) {
@@ -156,7 +174,16 @@ app.post("/auth/register", async (req, res) => {
       [username, email, passwordHash]
     );
 
-    return res.status(201).json({ user: created.rows[0] });
+    const u = created.rows[0];
+return res.status(201).json({
+  user: {
+    id: u.user_id,
+    name: u.username,
+    email: u.email,
+    join_date: u.join_date,
+  },
+});
+
   } catch (err) {
     console.error("POST /auth/register error:", err);
     return res.status(500).json({ error: err.message });
@@ -192,17 +219,104 @@ app.post("/auth/login", async (req, res) => {
     }
 
     return res.json({
-      user: {
-        user_id: user.user_id,
-        username: user.username,
-        email: user.email,
-        join_date: user.join_date,
-      },
-    });
+  user: {
+    id: user.user_id,
+    name: user.username,
+    email: user.email,
+    join_date: user.join_date,
+  },
+});
+
   } catch (err) {
     console.error("POST /auth/login error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
+
+app.get("/home/hero", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        g.game_id AS id,
+        g.title,
+        g.subtitle,
+        g.avg_score AS score,
+        g.cover_url AS cover,
+        g.accent_color AS accent
+      FROM game g
+      ORDER BY g.avg_score DESC
+      LIMIT 1
+    `);
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+app.get("/home/featured", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        g.game_id AS id,
+        g.title,
+        g.subtitle,
+        g.avg_score AS score,
+        g.cover_url AS cover,
+        g.accent_color AS accent
+      FROM game g
+      ORDER BY g.avg_score DESC
+      LIMIT 3
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/home/reviews", async (req, res) => {
+  const AVATARS = [
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=NeoKnight",
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=CyberSamurai",
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=ShadowNinja",
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=PixelWarrior",
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=ArcaneMage"
+  ];
+
+  try {
+    const result = await pool.query(`
+      SELECT 
+        ur.user_review_id AS id,
+        ur.user_id,
+        u.username AS user,
+        ur.game_id AS "gameId",
+        g.title AS game,
+        ur.review_text AS text,
+        ur.score,
+        ur.review_date AS date,
+        g.accent_color AS accent
+      FROM user_review ur
+      JOIN user_account u ON ur.user_id = u.user_id
+      JOIN game g ON ur.game_id = g.game_id
+      ORDER BY ur.review_date DESC
+      LIMIT 5
+    `);
+
+    const reviewsWithAvatar = result.rows.map((r) => ({
+      ...r,
+      avatar: AVATARS[r.user_id % AVATARS.length]
+    }));
+
+    res.json(reviewsWithAvatar);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
 
 module.exports = app;

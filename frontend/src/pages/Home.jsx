@@ -1,75 +1,50 @@
 import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
 
-const featuredGames = [
-  {
-    id: 1,
-    title: "Red Dead Redemption 2",
-    subtitle: "Open-world • Story • Western",
-    score: 9.6,
-    cover: "https://images.hdqwalls.com/download/red-dead-redemption-2-takes-over-dh-1920x1080.jpg",
-    accent: "#ff2d55",
-  },
-  {
-    id: 2,
-    title: "Grand Theft Auto V",
-    subtitle: "Open-world • Action • Crime",
-    score: 9.2,
-    cover: "https://images7.alphacoders.com/587/587535.jpg",
-    accent: "#35d07f",
-  },
-  {
-    id: 3,
-    title: "Cyberpunk 2077",
-    subtitle: "RPG • Action • Night City",
-    score: 8.8,
-    cover:
-      "https://images.wallpapersden.com/image/download/cyberpunk-2077-new-key-art_bGpoZm2UmZqaraWkpJRmbmdlrWZlbWU.jpg",
-    accent: "#f7d000",
-  },
-];
 
-const latestReviews = [
-  {
-    id: 201,
-    user: "Gojo",
-    avatar: "https://api.dicebear.com/9.x/lorelei/svg?seed=Gojo",
-    gameId: 1,
-    game: "Red Dead Redemption 2",
-    score: 9.7,
-    text: "Cinematic storytelling, insane detail, and a world that feels alive. A masterpiece experience.",
-    date: "2026-02-09",
-    accent: "#ff2d55",
-  },
-  {
-    id: 202,
-    user: "Taklu",
-    avatar: "https://api.dicebear.com/9.x/lorelei/svg?seed=Naruto",
-    gameId: 2,
-    game: "GTA V",
-    score: 9.1,
-    text: "Still the king of sandbox chaos. Missions, driving, and atmosphere are top-tier.",
-    date: "2026-02-08",
-    accent: "#35d07f",
-  },
-  {
-    id: 203,
-    user: "Shafik",
-    avatar: "https://api.dicebear.com/9.x/lorelei/svg?seed=Mikasa",
-    gameId: 3,
-    game: "Cyberpunk 2077",
-    score: 8.6,
-    text: "Night City looks unreal. Great build variety and combat, with a strong vibe and story moments.",
-    date: "2026-02-07",
-    accent: "#f7d000",
-  },
-];
+
 
 function formatDate(iso) {
   return iso;
 }
 
 export default function Home() {
-  const hero = featuredGames[0];
+  const API_BASE = "http://localhost:3000";
+
+const [hero, setHero] = useState(null);
+const [featuredGames, setFeaturedGames] = useState([]);
+const [latestReviews, setLatestReviews] = useState([]);
+const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+  async function loadHome() {
+    try {
+      const [heroRes, featuredRes, reviewRes] = await Promise.all([
+        fetch(`${API_BASE}/home/hero`),
+        fetch(`${API_BASE}/home/featured`),
+        fetch(`${API_BASE}/home/reviews`)
+      ]);
+
+      const heroData = await heroRes.json();
+      const featuredData = await featuredRes.json();
+      const reviewData = await reviewRes.json();
+
+      setHero(heroData);
+      setFeaturedGames(featuredData);
+      setLatestReviews(reviewData);
+      setLoading(false);
+    } catch (err) {
+      console.error(err);
+      setLoading(false);
+    }
+  }
+
+  loadHome();
+}, []);
+
+   if (loading || !hero) {
+  return <div className="container">Loading homepage...</div>;
+}
 
   return (
     <div className="container" style={{ paddingBottom: 22 }}>

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
+const API_BASE = "http://localhost:3000";
 
 
 const PLACEHOLDER =
@@ -153,6 +154,7 @@ export default function Games() {
 
   const [minScore, setMinScore] = useState(8.0);
 
+
   const [wishlist, setWishlist] = useState(() => {
     try {
       const raw = localStorage.getItem("ign_wishlist");
@@ -169,7 +171,7 @@ export default function Games() {
   useEffect(() => {
     async function fetchGames() {
       try {
-        const response = await fetch("http://localhost:3000/games");
+        const response = await fetch(`${API_BASE}/games`);
         const data = await response.json();
         setGamesData(data);
         setLoading(false);
@@ -229,6 +231,8 @@ export default function Games() {
 
     const ms = clamp(parseFloat(minScore), 0, 10);
     list = list.filter((g) => g.score >= ms);
+;
+
 
     if (tokens.length > 0) {
       list = list
@@ -251,7 +255,7 @@ export default function Games() {
       if (b.year !== a.year) return b.year - a.year;
       return a.title.localeCompare(b.title);
     });
-  }, [genre, platform, minScore, tokens, wishOnly, wishlist]);
+  }, [gamesData, genre, platform, minScore, tokens, wishOnly, wishlist]);
 
   function clearAll() {
     setSearch("");

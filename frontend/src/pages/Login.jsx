@@ -59,8 +59,16 @@ export default function Login() {
         return;
       }
 
-      // store user info
-      localStorage.setItem("user", JSON.stringify(data.user));
+    const u = data.user || {};
+localStorage.setItem(
+  "user",
+  JSON.stringify({
+    id: u.id ?? u.user_id,
+    name: u.name ?? u.username,
+    email: u.email,
+  })
+);
+
 
       setLoading(false);
       navigate("/games");
