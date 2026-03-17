@@ -15,3 +15,12 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+
+node_modules/
+.env
+.DS_Store
+dist/
+build/
+coverage/
+npm-debug.log

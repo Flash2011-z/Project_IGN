@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
+const API_BASE = "http://localhost:3000";
 
 
 const PLACEHOLDER =
@@ -94,9 +95,7 @@ const [error, setError] = useState(null);
 useEffect(() => {
   async function fetchGame() {
     try {
-      const response = await fetch(
-        `http://localhost:3000/games/${gameId}`
-      );
+      const response = await fetch(`${API_BASE}/games/${gameId}`);
 
       if (!response.ok) {
         throw new Error("Game not found");

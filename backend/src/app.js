@@ -45,7 +45,7 @@ app.get("/games-with-publisher", async (req, res) => {
         g.game_id,
         g.title,
         g.release_year,
-        p.publisher_name
+        p.name AS publisher_name
       FROM game g
       JOIN publisher p ON g.publisher_id = p.publisher_id
     `);
@@ -59,7 +59,11 @@ app.get("/games-with-publisher", async (req, res) => {
 /* Single game details */
 app.get("/games/:id", async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ error: "Invalid game id" });
+    }
 
     const result = await pool.query(
       `
@@ -72,9 +76,15 @@ app.get("/games/:id", async (req, res) => {
         g.description,
         g.cover_url AS cover,
         g.accent_color AS accent,
-        p.name AS developer,
-        ARRAY_REMOVE(ARRAY_AGG(DISTINCT genre.genre_name), NULL) AS genres,
-        ARRAY_REMOVE(ARRAY_AGG(DISTINCT platform.platform_name), NULL) AS platforms
+        p.name AS publisher,
+        COALESCE(
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT genre.genre_name), NULL),
+          '{}'
+        ) AS genres,
+        COALESCE(
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT platform.platform_name), NULL),
+          '{}'
+        ) AS platforms
       FROM game g
       LEFT JOIN publisher p ON g.publisher_id = p.publisher_id
       LEFT JOIN game_genre gg ON g.game_id = gg.game_id
@@ -97,7 +107,6 @@ app.get("/games/:id", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 /* Games list */
 app.get("/games", async (req, res) => {

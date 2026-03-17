@@ -1,33 +1,45 @@
--- =========================
--- 1) USER SYSTEM
--- =========================
+DROP TABLE IF EXISTS wishlist CASCADE;
+DROP TABLE IF EXISTS user_review_like CASCADE;
+DROP TABLE IF EXISTS comment CASCADE;
+DROP TABLE IF EXISTS user_review CASCADE;
+DROP TABLE IF EXISTS review CASCADE;
+DROP TABLE IF EXISTS reviewer CASCADE;
+DROP TABLE IF EXISTS cart_item CASCADE;
+DROP TABLE IF EXISTS cart CASCADE;
+DROP TABLE IF EXISTS price_history CASCADE;
+DROP TABLE IF EXISTS game_store_listing CASCADE;
+DROP TABLE IF EXISTS store CASCADE;
+DROP TABLE IF EXISTS game_release CASCADE;
+DROP TABLE IF EXISTS region CASCADE;
+DROP TABLE IF EXISTS game_platform CASCADE;
+DROP TABLE IF EXISTS platform CASCADE;
+DROP TABLE IF EXISTS game_genre CASCADE;
+DROP TABLE IF EXISTS genre CASCADE;
+DROP TABLE IF EXISTS game_tag_map CASCADE;
+DROP TABLE IF EXISTS game_tag CASCADE;
+DROP TABLE IF EXISTS game_experience CASCADE;
+DROP TABLE IF EXISTS game_developer CASCADE;
+DROP TABLE IF EXISTS roadmap_item CASCADE;
+DROP TABLE IF EXISTS content_sequence CASCADE;
+DROP TABLE IF EXISTS game CASCADE;
+DROP TABLE IF EXISTS developer CASCADE;
+DROP TABLE IF EXISTS publisher CASCADE;
+DROP TABLE IF EXISTS age_rating CASCADE;
+DROP TABLE IF EXISTS franchise CASCADE;
+DROP TABLE IF EXISTS user_account CASCADE;
+
 CREATE TABLE user_account (
   user_id SERIAL PRIMARY KEY,
   username TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
+  email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE wishlist (
-  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
-  game_id INT NOT NULL,
-  added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (user_id, game_id)
-);
-
--- =========================
--- 2) LOOKUP TABLES
--- =========================
 CREATE TABLE age_rating (
   rating_id SERIAL PRIMARY KEY,
   rating_name TEXT NOT NULL,
   description TEXT
-);
-
-CREATE TABLE franchise (
-  franchise_id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL
 );
 
 CREATE TABLE publisher (
@@ -39,6 +51,11 @@ CREATE TABLE developer (
   developer_id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   country TEXT
+);
+
+CREATE TABLE franchise (
+  franchise_id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL
 );
 
 CREATE TABLE genre (
@@ -56,6 +73,12 @@ CREATE TABLE region (
   region_name TEXT NOT NULL
 );
 
+CREATE TABLE reviewer (
+  reviewer_id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  designation TEXT
+);
+
 CREATE TABLE store (
   store_id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -63,31 +86,39 @@ CREATE TABLE store (
   store_type TEXT
 );
 
--- =========================
--- 3) GAME (backend expects this)
--- =========================
 CREATE TABLE game (
   game_id SERIAL PRIMARY KEY,
   title TEXT NOT NULL,
   subtitle TEXT,
   description TEXT,
-  overall_score NUMERIC(3,1),
+  avg_score NUMERIC(3,1),
   cover_url TEXT,
   accent_color TEXT,
   release_year INT,
-
   publisher_id INT REFERENCES publisher(publisher_id) ON DELETE SET NULL,
   franchise_id INT REFERENCES franchise(franchise_id) ON DELETE SET NULL,
   rating_id INT REFERENCES age_rating(rating_id) ON DELETE SET NULL
 );
 
--- =========================
--- 4) GAME RELATIONS
--- =========================
+CREATE TABLE content_sequence (
+  sequence_id SERIAL PRIMARY KEY,
+  franchise_id INT REFERENCES franchise(franchise_id) ON DELETE CASCADE,
+  content_title TEXT NOT NULL,
+  sequence_number INT
+);
+
 CREATE TABLE game_developer (
   game_id INT REFERENCES game(game_id) ON DELETE CASCADE,
   developer_id INT REFERENCES developer(developer_id) ON DELETE CASCADE,
   PRIMARY KEY (game_id, developer_id)
+);
+
+CREATE TABLE game_experience (
+  experience_id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
+  game_id INT REFERENCES game(game_id) ON DELETE CASCADE,
+  hours_played INT DEFAULT 0,
+  completed BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE game_genre (
@@ -110,9 +141,6 @@ CREATE TABLE game_release (
   release_date DATE
 );
 
--- =========================
--- 5) TAG SYSTEM
--- =========================
 CREATE TABLE game_tag (
   tag_id SERIAL PRIMARY KEY,
   tag_name TEXT NOT NULL
@@ -124,9 +152,6 @@ CREATE TABLE game_tag_map (
   PRIMARY KEY (game_id, tag_id)
 );
 
--- =========================
--- 6) STORE LISTING + PRICE HISTORY
--- =========================
 CREATE TABLE game_store_listing (
   listing_id SERIAL PRIMARY KEY,
   game_id INT REFERENCES game(game_id) ON DELETE CASCADE,
@@ -135,7 +160,6 @@ CREATE TABLE game_store_listing (
   currency TEXT DEFAULT 'USD',
   purchase_url TEXT,
   stock_status TEXT,
-
   UNIQUE (game_id, store_id)
 );
 
@@ -146,59 +170,6 @@ CREATE TABLE price_history (
   date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =========================
--- 7) REVIEWS (editorial)
--- =========================
-CREATE TABLE reviewer (
-  reviewer_id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  designation TEXT
-);
-
-CREATE TABLE review (
-  review_id SERIAL PRIMARY KEY,
-  game_id INT REFERENCES game(game_id) ON DELETE CASCADE,
-  reviewer_id INT REFERENCES reviewer(reviewer_id) ON DELETE SET NULL,
-  review_text TEXT,
-  review_date DATE,
-  final_score NUMERIC(3,1)
-);
-
--- =========================
--- 8) USER REVIEWS
--- =========================
-CREATE TABLE user_review (
-  user_review_id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
-  game_id INT REFERENCES game(game_id) ON DELETE CASCADE,
-  review_text TEXT,
-  score NUMERIC(3,1),
-  review_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-  UNIQUE (user_id, game_id)
-);
-
-CREATE TABLE user_review_like (
-  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
-  user_review_id INT REFERENCES user_review(user_review_id) ON DELETE CASCADE,
-  PRIMARY KEY (user_id, user_review_id)
-);
-
--- =========================
--- 9) COMMENTS (optional)
--- =========================
-CREATE TABLE comment (
-  comment_id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
-  user_review_id INT REFERENCES user_review(user_review_id) ON DELETE CASCADE,
-  parent_comment_id INT REFERENCES comment(comment_id) ON DELETE CASCADE,
-  content TEXT NOT NULL,
-  comment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- =========================
--- 10) CART (optional ecommerce)
--- =========================
 CREATE TABLE cart (
   cart_id SERIAL PRIMARY KEY,
   user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
@@ -212,25 +183,13 @@ CREATE TABLE cart_item (
   PRIMARY KEY (cart_id, listing_id)
 );
 
--- =========================
--- 11) EXPERIENCE (optional)
--- =========================
-CREATE TABLE game_experience (
-  experience_id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
+CREATE TABLE review (
+  review_id SERIAL PRIMARY KEY,
   game_id INT REFERENCES game(game_id) ON DELETE CASCADE,
-  hours_played INT DEFAULT 0,
-  completed BOOLEAN DEFAULT FALSE
-);
-
--- =========================
--- 12) CONTENT SEQUENCE + ROADMAP (optional)
--- =========================
-CREATE TABLE content_sequence (
-  sequence_id SERIAL PRIMARY KEY,
-  franchise_id INT REFERENCES franchise(franchise_id) ON DELETE CASCADE,
-  content_title TEXT NOT NULL,
-  sequence_number INT
+  reviewer_id INT REFERENCES reviewer(reviewer_id) ON DELETE SET NULL,
+  review_text TEXT,
+  review_date DATE,
+  final_score NUMERIC(3,1)
 );
 
 CREATE TABLE roadmap_item (
@@ -243,4 +202,36 @@ CREATE TABLE roadmap_item (
   expected_date DATE,
   game_id INT REFERENCES game(game_id) ON DELETE CASCADE,
   franchise_id INT REFERENCES franchise(franchise_id) ON DELETE CASCADE
+);
+
+CREATE TABLE user_review (
+  user_review_id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
+  game_id INT REFERENCES game(game_id) ON DELETE CASCADE,
+  review_text TEXT,
+  score NUMERIC(3,1),
+  review_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (user_id, game_id)
+);
+
+CREATE TABLE comment (
+  comment_id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
+  user_review_id INT REFERENCES user_review(user_review_id) ON DELETE CASCADE,
+  parent_comment_id INT REFERENCES comment(comment_id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  comment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_review_like (
+  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
+  user_review_id INT REFERENCES user_review(user_review_id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, user_review_id)
+);
+
+CREATE TABLE wishlist (
+  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
+  game_id INT NOT NULL,
+  added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, game_id)
 );
