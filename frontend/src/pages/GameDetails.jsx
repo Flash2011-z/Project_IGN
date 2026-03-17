@@ -1,7 +1,8 @@
 import { Link, useParams } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
+import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser } from "../utils/auth";
+import { addWishlistGame, fetchWishlistIds, removeWishlistGame } from "../utils/wishlist";
 const API_BASE = "http://localhost:3000";
-
 
 const PLACEHOLDER =
   "data:image/svg+xml;utf8," +
@@ -22,8 +23,6 @@ const PLACEHOLDER =
     </text>
   </svg>
 `);
-
-
 
 const seedReviews = [
   {
@@ -84,54 +83,51 @@ function CoverImg({ src, alt, style }) {
 export default function GameDetails() {
   const params = useParams();
   const gameId = safeInt(params.id);
+
   // =============================
-// FETCH GAME FROM BACKEND
-// =============================
+  // FETCH GAME FROM BACKEND
+  // =============================
 
-const [game, setGame] = useState(null);
-const [loading, setLoading] = useState(true);
-const [error, setError] = useState(null);
+  const [game, setGame] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-useEffect(() => {
-  async function fetchGame() {
-    try {
-      const response = await fetch(`${API_BASE}/games/${gameId}`);
+  useEffect(() => {
+    async function fetchGame() {
+      try {
+        const response = await fetch(`${API_BASE}/games/${gameId}`);
 
-      if (!response.ok) {
-        throw new Error("Game not found");
+        if (!response.ok) {
+          throw new Error("Game not found");
+        }
+
+        const data = await response.json();
+
+        // 🔥 Convert backend response to SAME structure as old static object
+        setGame({
+          id: data.id,
+          title: data.title,
+          subtitle: data.subtitle,
+          score: data.score,
+          year: data.year,
+          genres: data.genres || [],
+          platforms: data.platforms || [],
+          developer: data.developer,
+          cover: data.cover,
+          accent: data.accent,
+          description: data.description,
+        });
+      } catch (err) {
+        setError("Failed to fetch game");
+      } finally {
+        setLoading(false);
       }
-
-      const data = await response.json();
-
-      // 🔥 Convert backend response to SAME structure as old static object
-setGame({
-  id: data.id,
-  title: data.title,
-  subtitle: data.subtitle,
-  score: data.score,
-  year: data.year,
-  genres: data.genres || [],
-  platforms: data.platforms || [],
-  developer: data.developer,   // backend must send this
-  cover: data.cover,           // ✅ change
-  accent: data.accent,         // ✅ change
-  description: data.description,
-});
-
-
-    } catch (err) {
-      setError("Failed to fetch game");
-    } finally {
-      setLoading(false);
     }
-  }
 
-  if (gameId !== null) {
-    fetchGame();
-  }
-}, [gameId]);
-
-
+    if (gameId !== null) {
+      fetchGame();
+    }
+  }, [gameId]);
 
   const [reviews, setReviews] = useState(seedReviews);
   const [name, setName] = useState("");
@@ -140,29 +136,65 @@ setGame({
 
   const [reviewSort, setReviewSort] = useState("new"); // new | top
 
-  // Wishlist (local)
-  const [wishlist, setWishlist] = useState(() => {
-    try {
-      const raw = localStorage.getItem("ign_wishlist");
-      const arr = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(arr)) return arr;
-      return [];
-    } catch {
-      return [];
+  // Wishlist (account-based)
+  const [wishlist, setWishlist] = useState([]);
+
+  useEffect(() => {
+    async function loadWishlist() {
+      const user = getStoredUser();
+
+      if (!user?.id) {
+        setWishlist([]);
+        return;
+      }
+
+      try {
+        const ids = await fetchWishlistIds(user.id);
+        setWishlist(Array.isArray(ids) ? ids : []);
+      } catch {
+        setWishlist([]);
+      }
     }
-  });
 
-  function saveWishlist(next) {
-    setWishlist(next);
-    try {
-      localStorage.setItem("ign_wishlist", JSON.stringify(next));
-    } catch {}
-  }
+    loadWishlist();
 
-  function toggleWish(id) {
+    window.addEventListener("focus", loadWishlist);
+    window.addEventListener("storage", loadWishlist);
+    window.addEventListener(AUTH_EVENT, loadWishlist);
+    window.addEventListener(WISHLIST_EVENT, loadWishlist);
+
+    return () => {
+      window.removeEventListener("focus", loadWishlist);
+      window.removeEventListener("storage", loadWishlist);
+      window.removeEventListener(AUTH_EVENT, loadWishlist);
+      window.removeEventListener(WISHLIST_EVENT, loadWishlist);
+    };
+  }, []);
+
+  async function toggleWish(id) {
+    const user = getStoredUser();
+
+    if (!user?.id) {
+      alert("Please login to use wishlist.");
+      return;
+    }
+
     const exists = wishlist.indexOf(id) !== -1;
-    if (exists) saveWishlist(wishlist.filter((x) => x !== id));
-    else saveWishlist([id].concat(wishlist));
+    const previous = wishlist;
+    const next = exists ? wishlist.filter((x) => x !== id) : [id, ...wishlist];
+
+    setWishlist(next);
+
+    try {
+      if (exists) {
+        await removeWishlistGame(user.id, id);
+      } else {
+        await addWishlistGame(user.id, id);
+      }
+    } catch {
+      setWishlist(previous);
+      alert("Failed to update wishlist.");
+    }
   }
 
   const wished = game ? wishlist.indexOf(game.id) !== -1 : false;
@@ -242,26 +274,26 @@ setGame({
       alert(url);
     }
   }
-if (loading) {
-  return (
-    <div className="container">
-      <div className="card" style={{ marginTop: 14 }}>
-        Loading game details...
-      </div>
-    </div>
-  );
-}
 
-if (error) {
-  return (
-    <div className="container">
-      <div className="card" style={{ marginTop: 14 }}>
-        {error}
+  if (loading) {
+    return (
+      <div className="container">
+        <div className="card" style={{ marginTop: 14 }}>
+          Loading game details...
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
+  if (error) {
+    return (
+      <div className="container">
+        <div className="card" style={{ marginTop: 14 }}>
+          {error}
+        </div>
+      </div>
+    );
+  }
 
   if (gameId === null) {
     return (

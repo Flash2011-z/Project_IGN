@@ -412,3 +412,133 @@ select.input option:checked{
   background: #ff2d55;
   color: #0b0c10;
 }
+
+
+.auth-grid{
+  display:grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(380px, 1.2fr);
+}
+
+.profile-grid{
+  margin-top:14px;
+  display:grid;
+  grid-template-columns: 1fr 0.9fr;
+  gap:14px;
+  align-items:start;
+}
+
+.profile-avatar{
+  width:72px;
+  height:72px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  font-size:28px;
+  font-weight:950;
+  color:#fff;
+  background: linear-gradient(135deg, rgba(255,45,85,0.85), rgba(120,140,255,0.75));
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 16px 35px rgba(0,0,0,0.35);
+}
+
+.nav-shell{
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 16px;
+  min-height: 78px;
+}
+
+.nav-links{
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-actions{
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.nav-search{
+  width: 260px;
+  height: 48px;
+  border-radius: 16px;
+}
+
+.nav-profile-btn{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 16px;
+  border-radius: 16px;
+  max-width: 160px;
+}
+
+.nav-profile-dot{
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,45,85,0.14);
+  border: 1px solid rgba(255,45,85,0.32);
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.nav-profile-name{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px){
+  .auth-grid,
+  .profile-grid{
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px){
+  .nav-shell{
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .nav-links{
+    width: 100%;
+    flex-wrap: wrap;
+    order: 2;
+  }
+
+  .nav-actions{
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+    order: 3;
+  }
+
+  .nav-search{
+    width: 100%;
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 640px){
+  .auth-visual{
+    min-height:300px !important;
+  }
+
+  .nav-profile-btn{
+    max-width: none;
+  }
+}
+

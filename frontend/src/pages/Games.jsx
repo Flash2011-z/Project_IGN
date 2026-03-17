@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
+import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser } from "../utils/auth";
+import { addWishlistGame, fetchWishlistIds, removeWishlistGame } from "../utils/wishlist";
 const API_BASE = "http://localhost:3000";
-
 
 const PLACEHOLDER =
   "data:image/svg+xml;utf8," +
@@ -22,7 +23,6 @@ const PLACEHOLDER =
     </text>
   </svg>
 `);
-
 
 function normalize(s) {
   return String(s || "")
@@ -61,16 +61,16 @@ function buildSearchFields(game) {
     year,
     all: normalize(
       game.title +
-      " " +
-      game.subtitle +
-      " " +
-      game.developer +
-      " " +
-      (game.genres || []).join(" ") +
-      " " +
-      (game.platforms || []).join(" ") +
-      " " +
-      String(game.year || "")
+        " " +
+        game.subtitle +
+        " " +
+        game.developer +
+        " " +
+        (game.genres || []).join(" ") +
+        " " +
+        (game.platforms || []).join(" ") +
+        " " +
+        String(game.year || "")
     ),
   };
 }
@@ -148,24 +148,12 @@ export default function Games() {
 
   const [search, setSearch] = useState("");
 
-  // ✅ only changed these defaults:
   const [genre, setGenre] = useState("All Genres");
   const [platform, setPlatform] = useState("All Platforms");
 
   const [minScore, setMinScore] = useState(8.0);
 
-
-  const [wishlist, setWishlist] = useState(() => {
-    try {
-      const raw = localStorage.getItem("ign_wishlist");
-      const arr = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(arr)) return arr;
-      return [];
-    } catch {
-      return [];
-    }
-  });
-
+  const [wishlist, setWishlist] = useState([]);
   const [wishOnly, setWishOnly] = useState(false);
 
   useEffect(() => {
@@ -184,24 +172,67 @@ export default function Games() {
     fetchGames();
   }, []);
 
+  useEffect(() => {
+    async function loadWishlist() {
+      const user = getStoredUser();
 
-  function saveWishlist(next) {
-    setWishlist(next);
-    try {
-      localStorage.setItem("ign_wishlist", JSON.stringify(next));
-    } catch { }
-  }
+      if (!user?.id) {
+        setWishlist([]);
+        return;
+      }
 
-  function toggleWish(id) {
+      try {
+        const ids = await fetchWishlistIds(user.id);
+        setWishlist(Array.isArray(ids) ? ids : []);
+      } catch {
+        setWishlist([]);
+      }
+    }
+
+    loadWishlist();
+
+    window.addEventListener("focus", loadWishlist);
+    window.addEventListener("storage", loadWishlist);
+    window.addEventListener(AUTH_EVENT, loadWishlist);
+    window.addEventListener(WISHLIST_EVENT, loadWishlist);
+
+    return () => {
+      window.removeEventListener("focus", loadWishlist);
+      window.removeEventListener("storage", loadWishlist);
+      window.removeEventListener(AUTH_EVENT, loadWishlist);
+      window.removeEventListener(WISHLIST_EVENT, loadWishlist);
+    };
+  }, []);
+
+  async function toggleWish(id) {
+    const user = getStoredUser();
+
+    if (!user?.id) {
+      alert("Please login to use wishlist.");
+      return;
+    }
+
     const exists = wishlist.indexOf(id) !== -1;
-    if (exists) saveWishlist(wishlist.filter((x) => x !== id));
-    else saveWishlist([id].concat(wishlist));
+    const previous = wishlist;
+    const next = exists ? wishlist.filter((x) => x !== id) : [id, ...wishlist];
+
+    setWishlist(next);
+
+    try {
+      if (exists) {
+        await removeWishlistGame(user.id, id);
+      } else {
+        await addWishlistGame(user.id, id);
+      }
+    } catch {
+      setWishlist(previous);
+      alert("Failed to update wishlist.");
+    }
   }
 
   const tokens = useMemo(() => tokenize(search), [search]);
   const searching = tokens.length > 0;
 
-  // ✅ only changed these two memos (reliable Set + better labels)
   const allGenres = useMemo(() => {
     const set = new Set();
     for (let i = 0; i < gamesData.length; i++) {
@@ -225,14 +256,11 @@ export default function Games() {
 
     if (wishOnly) list = list.filter((g) => wishlist.indexOf(g.id) !== -1);
 
-    // ✅ only changed these comparisons:
     if (genre !== "All Genres") list = list.filter((g) => (g.genres || []).indexOf(genre) !== -1);
     if (platform !== "All Platforms") list = list.filter((g) => (g.platforms || []).indexOf(platform) !== -1);
 
     const ms = clamp(parseFloat(minScore), 0, 10);
     list = list.filter((g) => g.score >= ms);
-;
-
 
     if (tokens.length > 0) {
       list = list
@@ -259,14 +287,12 @@ export default function Games() {
 
   function clearAll() {
     setSearch("");
-
-    // ✅ only changed these resets:
     setGenre("All Genres");
     setPlatform("All Platforms");
-
     setMinScore(8.0);
     setWishOnly(false);
   }
+
   if (loading) {
     return <div className="container">Loading games...</div>;
   }
@@ -283,7 +309,7 @@ export default function Games() {
             <div className="kicker">Library</div>
             <h1 className="heroTitle">Browse Games</h1>
             <p className="muted" style={{ margin: 0, maxWidth: 760 }}>
-              Premium filters + relevance search. Wishlist is saved locally for now.
+              Premium filters + relevance search. Wishlist is connected to your account.
             </p>
           </div>
 
@@ -312,11 +338,8 @@ export default function Games() {
             {searching ? `${filtered.length} results` : `${filtered.length} games`}
           </span>
           {wishOnly ? <span className="pill">Wishlist only</span> : null}
-
-          {/* ✅ only changed these checks */}
           {genre !== "All Genres" ? <span className="pill">Genre: {genre}</span> : null}
           {platform !== "All Platforms" ? <span className="pill">Platform: {platform}</span> : null}
-
           <span className="pill">Min score: {minScore.toFixed(1)}</span>
         </div>
       </section>
@@ -380,7 +403,6 @@ export default function Games() {
           )}
         </div>
       </section>
-
 
       <section className="gamesGrid" style={{ marginTop: 14 }}>
         {filtered.map((g) => {

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { getStoredUser, setStoredUser } from "../utils/auth";
 
 function GoogleIcon() {
   return (
@@ -29,9 +30,14 @@ export default function Login() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (getStoredUser()) {
+      navigate("/profile", { replace: true });
+    }
+  }, [navigate]);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -54,27 +60,16 @@ export default function Login() {
       const data = await res.json();
 
       if (!res.ok) {
-        setLoading(false);
         setError(data?.error || "Login failed.");
         return;
       }
 
-    const u = data.user || {};
-localStorage.setItem(
-  "user",
-  JSON.stringify({
-    id: u.id ?? u.user_id,
-    name: u.name ?? u.username,
-    email: u.email,
-  })
-);
-
-
-      setLoading(false);
-      navigate("/games");
-    } catch (err) {
-      setLoading(false);
+      setStoredUser(data.user || {});
+      navigate("/profile", { replace: true });
+    } catch {
       setError("Backend not reachable. Is it running on port 3000?");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -82,7 +77,7 @@ localStorage.setItem(
     <div className="container" style={{ paddingTop: 22, paddingBottom: 30 }}>
       <div style={{ minHeight: "calc(100vh - 140px)", display: "grid", placeItems: "center" }}>
         <div className="card" style={{ width: "100%", maxWidth: 1020, padding: 0, overflow: "hidden", borderRadius: 22 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) minmax(380px, 1.2fr)" }}>
+          <div className="auth-grid">
             <div style={{ padding: 26 }}>
               <div style={{ fontWeight: 950, letterSpacing: 1.6, fontSize: 18 }}>
                 <span style={{ color: "#ff2d55" }}>IGN</span>
@@ -146,8 +141,7 @@ localStorage.setItem(
                 </div>
 
                 <p style={{ marginTop: 18, opacity: 0.78, fontSize: 13 }}>
-                  Not a member?{" "}
-                  <Link to="/register" style={{ fontWeight: 900 }}>Register now</Link>
+                  Not a member? <Link to="/register" style={{ fontWeight: 900 }}>Register now</Link>
                 </p>
 
                 <div style={{ marginTop: 6 }}>
@@ -159,6 +153,7 @@ localStorage.setItem(
             </div>
 
             <div
+              className="auth-visual"
               style={{
                 position: "relative",
                 minHeight: 560,
@@ -181,7 +176,6 @@ localStorage.setItem(
                 </p>
               </div>
             </div>
-
           </div>
         </div>
       </div>

@@ -325,7 +325,109 @@ app.get("/home/reviews", async (req, res) => {
   }
 });
 
+app.get("/wishlist/:userId", async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
 
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        g.game_id AS id,
+        g.title,
+        g.subtitle,
+        g.avg_score AS score,
+        g.release_year AS year,
+        g.cover_url AS cover,
+        g.accent_color AS accent,
+        p.name AS developer,
+        COALESCE(
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT genre.genre_name), NULL),
+          '{}'
+        ) AS genres,
+        COALESCE(
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT platform.platform_name), NULL),
+          '{}'
+        ) AS platforms,
+        w.added_date
+      FROM wishlist w
+      JOIN game g ON w.game_id = g.game_id
+      LEFT JOIN publisher p ON g.publisher_id = p.publisher_id
+      LEFT JOIN game_genre gg ON g.game_id = gg.game_id
+      LEFT JOIN genre ON gg.genre_id = genre.genre_id
+      LEFT JOIN game_platform gp ON g.game_id = gp.game_id
+      LEFT JOIN platform ON gp.platform_id = platform.platform_id
+      WHERE w.user_id = $1
+      GROUP BY g.game_id, p.name, w.added_date
+      ORDER BY w.added_date DESC
+      `,
+      [userId]
+    );
+
+    return res.json(result.rows);
+  } catch (err) {
+    console.error("GET /wishlist/:userId error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/wishlist/:userId", async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    const gameId = parseInt(req.body.gameId, 10);
+
+    if (Number.isNaN(userId) || Number.isNaN(gameId)) {
+      return res.status(400).json({ error: "Invalid user id or game id" });
+    }
+
+    const gameExists = await pool.query(
+      "SELECT 1 FROM game WHERE game_id = $1 LIMIT 1",
+      [gameId]
+    );
+
+    if (gameExists.rowCount === 0) {
+      return res.status(404).json({ error: "Game not found" });
+    }
+
+    await pool.query(
+      `
+      INSERT INTO wishlist (user_id, game_id)
+      VALUES ($1, $2)
+      ON CONFLICT (user_id, game_id) DO NOTHING
+      `,
+      [userId, gameId]
+    );
+
+    return res.status(201).json({ ok: true });
+  } catch (err) {
+    console.error("POST /wishlist/:userId error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/wishlist/:userId/:gameId", async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    const gameId = parseInt(req.params.gameId, 10);
+
+    if (Number.isNaN(userId) || Number.isNaN(gameId)) {
+      return res.status(400).json({ error: "Invalid user id or game id" });
+    }
+
+    await pool.query(
+      "DELETE FROM wishlist WHERE user_id = $1 AND game_id = $2",
+      [userId, gameId]
+    );
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /wishlist/:userId/:gameId error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 
 module.exports = app;

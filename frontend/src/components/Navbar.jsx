@@ -1,55 +1,63 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-
-function readUser() {
-  try {
-    const raw = localStorage.getItem("ign_user");
-    if (!raw) return null;
-    const obj = JSON.parse(raw);
-    if (obj && typeof obj === "object") return obj;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function readWishlistCount() {
-  try {
-    const raw = localStorage.getItem("ign_wishlist");
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr.length : 0;
-  } catch {
-    return 0;
-  }
-}
+import {
+  AUTH_EVENT,
+  WISHLIST_EVENT,
+  clearStoredUser,
+  getStoredUser,
+} from "../utils/auth";
+import { fetchWishlistGames } from "../utils/wishlist";
 
 export default function Navbar() {
   const navigate = useNavigate();
 
-  const [user, setUser] = useState(() => readUser());
-  const [wishCount, setWishCount] = useState(() => readWishlistCount());
+  const [user, setUser] = useState(() => getStoredUser());
+  const [wishCount, setWishCount] = useState(0);
 
   useEffect(() => {
-    function refresh() {
-      setUser(readUser());
-      setWishCount(readWishlistCount());
+    async function refresh(nextUser = getStoredUser()) {
+      setUser(nextUser);
+
+      if (!nextUser?.id) {
+        setWishCount(0);
+        return;
+      }
+
+      try {
+        const wishedGames = await fetchWishlistGames(nextUser.id);
+        setWishCount(wishedGames.length);
+      } catch {
+        setWishCount(0);
+      }
     }
 
     refresh();
-    window.addEventListener("storage", refresh);
-    window.addEventListener("focus", refresh);
+
+    function handleAuth() {
+      refresh(getStoredUser());
+    }
+
+    function handleWishlist() {
+      refresh(getStoredUser());
+    }
+
+    window.addEventListener("focus", handleWishlist);
+    window.addEventListener("storage", handleAuth);
+    window.addEventListener(AUTH_EVENT, handleAuth);
+    window.addEventListener(WISHLIST_EVENT, handleWishlist);
 
     return () => {
-      window.removeEventListener("storage", refresh);
-      window.removeEventListener("focus", refresh);
+      window.removeEventListener("focus", handleWishlist);
+      window.removeEventListener("storage", handleAuth);
+      window.removeEventListener(AUTH_EVENT, handleAuth);
+      window.removeEventListener(WISHLIST_EVENT, handleWishlist);
     };
   }, []);
 
   function handleLogout() {
-    try {
-      localStorage.removeItem("ign_user");
-    } catch {}
+    clearStoredUser();
     setUser(null);
+    setWishCount(0);
     navigate("/");
   }
 
@@ -64,20 +72,12 @@ export default function Navbar() {
         backdropFilter: "blur(10px)",
       }}
     >
-      <div
-        className="container"
-        style={{
-          display: "flex",
-          gap: 14,
-          alignItems: "center",
-          padding: "14px 16px",
-        }}
-      >
-        <Link to="/" style={{ fontWeight: 900, letterSpacing: 0.8 }}>
+      <div className="container nav-shell">
+        <Link to="/" style={{ fontWeight: 900, letterSpacing: 0.8, fontSize: 18 }}>
           <span style={{ color: "#ff2d55" }}>IGN</span>
         </Link>
 
-        <nav style={{ display: "flex", gap: 12, alignItems: "center" }}>
+        <nav className="nav-links">
           <NavLink to="/" end className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
             Home
           </NavLink>
@@ -90,7 +90,6 @@ export default function Navbar() {
             Wishlist{wishCount > 0 ? <span className="wishCount">{wishCount}</span> : null}
           </NavLink>
 
-          {/* If logged in, show Profile link in nav too (optional but nice) */}
           {user ? (
             <NavLink to="/profile" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
               Profile
@@ -98,8 +97,8 @@ export default function Navbar() {
           ) : null}
         </nav>
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
-          <input className="input" placeholder="Search games..." style={{ width: 260 }} />
+        <div className="nav-actions">
+          <input className="input nav-search" placeholder="Search games..." />
 
           {!user ? (
             <>
@@ -112,8 +111,11 @@ export default function Navbar() {
             </>
           ) : (
             <>
-              <Link to="/profile" className="btn">
-                {user.name ? user.name : "Profile"}
+              <Link to="/profile" className="btn nav-profile-btn" title={user.email || user.name || "Profile"}>
+                <span className="nav-profile-dot" aria-hidden="true">
+                  {(user.name || "P").charAt(0).toUpperCase()}
+                </span>
+                <span className="nav-profile-name">{user.name || "Profile"}</span>
               </Link>
               <button type="button" className="btn primary" onClick={handleLogout}>
                 Logout

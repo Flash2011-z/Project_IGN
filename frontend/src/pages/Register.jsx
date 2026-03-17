@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { getStoredUser, setStoredUser } from "../utils/auth";
 
 function GoogleIcon() {
   return (
@@ -31,9 +32,14 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (getStoredUser()) {
+      navigate("/profile", { replace: true });
+    }
+  }, [navigate]);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -64,16 +70,16 @@ export default function Register() {
       const data = await res.json();
 
       if (!res.ok) {
-        setLoading(false);
         setError(data?.error || "Registration failed.");
         return;
       }
 
-      setLoading(false);
-      navigate("/login");
-    } catch (err) {
-      setLoading(false);
+      setStoredUser(data.user || {});
+      navigate("/profile", { replace: true });
+    } catch {
       setError("Backend not reachable. Is it running on port 3000?");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -81,7 +87,7 @@ export default function Register() {
     <div className="container" style={{ paddingTop: 22, paddingBottom: 30 }}>
       <div style={{ minHeight: "calc(100vh - 140px)", display: "grid", placeItems: "center" }}>
         <div className="card" style={{ width: "100%", maxWidth: 1020, padding: 0, overflow: "hidden", borderRadius: 22 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) minmax(380px, 1.2fr)" }}>
+          <div className="auth-grid">
             <div style={{ padding: 26 }}>
               <div style={{ fontWeight: 950, letterSpacing: 1.6, fontSize: 18 }}>
                 <span style={{ color: "#ff2d55" }}>IGN</span>
@@ -141,8 +147,7 @@ export default function Register() {
                 </div>
 
                 <p style={{ marginTop: 18, opacity: 0.78, fontSize: 13 }}>
-                  Already have an account?{" "}
-                  <Link to="/login" style={{ fontWeight: 900 }}>Login</Link>
+                  Already have an account? <Link to="/login" style={{ fontWeight: 900 }}>Login</Link>
                 </p>
 
                 <div style={{ marginTop: 6 }}>
@@ -154,6 +159,7 @@ export default function Register() {
             </div>
 
             <div
+              className="auth-visual"
               style={{
                 position: "relative",
                 minHeight: 560,
@@ -174,7 +180,6 @@ export default function Register() {
                 </p>
               </div>
             </div>
-
           </div>
         </div>
       </div>

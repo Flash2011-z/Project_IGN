@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser } from "../utils/auth";
+import { fetchWishlistGames, removeWishlistGame } from "../utils/wishlist";
 
 const PLACEHOLDER =
   "data:image/svg+xml;utf8," +
@@ -21,25 +23,6 @@ const PLACEHOLDER =
   </svg>
 `);
 
-function safeParseArray(raw) {
-  try {
-    const v = JSON.parse(raw);
-    if (Array.isArray(v)) return v;
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-function loadWishlistIds() {
-  const raw = localStorage.getItem("ign_wishlist");
-  const arr = safeParseArray(raw);
-  // ensure numbers (ids in your gamesData are numbers)
-  return arr
-    .map((x) => parseInt(String(x), 10))
-    .filter((n) => !Number.isNaN(n));
-}
-
 function GameCover({ src, alt }) {
   const [imgSrc, setImgSrc] = useState(src || PLACEHOLDER);
 
@@ -57,47 +40,95 @@ function GameCover({ src, alt }) {
   );
 }
 
-export default function Wishlist({ gamesData = [] }) {
-  const [wishlistIds, setWishlistIds] = useState(() => loadWishlistIds());
+export default function Wishlist() {
+  const [user, setUser] = useState(() => getStoredUser());
+  const [wishedGames, setWishedGames] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // keep page updated if user toggles wishlist elsewhere (Games page)
   useEffect(() => {
-    function onStorage(e) {
-      if (e && e.key && e.key !== "ign_wishlist") return;
-      setWishlistIds(loadWishlistIds());
-    }
-    window.addEventListener("storage", onStorage);
+    async function loadWishlist(nextUser = getStoredUser()) {
+      setUser(nextUser);
 
-    // also refresh when the page becomes visible again
-    function onFocus() {
-      setWishlistIds(loadWishlistIds());
+      if (!nextUser?.id) {
+        setWishedGames([]);
+        setLoading(false);
+        setError("");
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+        const games = await fetchWishlistGames(nextUser.id);
+        setWishedGames(games);
+      } catch (err) {
+        setError(err.message || "Failed to load wishlist.");
+        setWishedGames([]);
+      } finally {
+        setLoading(false);
+      }
     }
-    window.addEventListener("focus", onFocus);
+
+    loadWishlist();
+
+    function handleRefresh() {
+      loadWishlist(getStoredUser());
+    }
+
+    window.addEventListener("focus", handleRefresh);
+    window.addEventListener(AUTH_EVENT, handleRefresh);
+    window.addEventListener(WISHLIST_EVENT, handleRefresh);
 
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("focus", handleRefresh);
+      window.removeEventListener(AUTH_EVENT, handleRefresh);
+      window.removeEventListener(WISHLIST_EVENT, handleRefresh);
     };
   }, []);
 
-  const wishedGames = useMemo(() => {
-    const map = {};
-    for (let i = 0; i < wishlistIds.length; i++) map[wishlistIds[i]] = true;
+  async function handleRemove(gameId) {
+    if (!user?.id) return;
 
-    const list = [];
-    for (let i = 0; i < gamesData.length; i++) {
-      const g = gamesData[i];
-      if (map[g.id]) list.push(g);
-    }
-    return list;
-  }, [wishlistIds, gamesData]);
+    const prev = wishedGames;
+    const next = prev.filter((g) => g.id !== gameId);
+    setWishedGames(next);
 
-  function removeFromWishlist(id) {
-    const next = wishlistIds.filter((x) => x !== id);
-    setWishlistIds(next);
     try {
-      localStorage.setItem("ign_wishlist", JSON.stringify(next));
-    } catch {}
+      await removeWishlistGame(user.id, gameId);
+    } catch (err) {
+      setWishedGames(prev);
+      setError(err.message || "Failed to remove from wishlist.");
+    }
+  }
+
+  if (!user) {
+    return (
+      <div className="container" style={{ paddingBottom: 28 }}>
+        <section className="pageHero" style={{ marginTop: 12 }}>
+          <div className="pageHeroTop">
+            <div>
+              <div className="kicker">Collection</div>
+              <h1 className="heroTitle">Wishlist</h1>
+              <p className="muted" style={{ margin: 0, maxWidth: 760 }}>
+                Login to view the wishlist connected to your account.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <div className="card" style={{ marginTop: 14 }}>
+          <h3 style={{ marginTop: 0, fontWeight: 950 }}>You are not logged in</h3>
+          <p className="muted" style={{ margin: "6px 0 12px" }}>
+            Sign in first. Each user has a separate wishlist.
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link to="/login" className="btn primary">Login</Link>
+            <Link to="/register" className="btn ghost">Register</Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -108,7 +139,7 @@ export default function Wishlist({ gamesData = [] }) {
             <div className="kicker">Collection</div>
             <h1 className="heroTitle">Wishlist</h1>
             <p className="muted" style={{ margin: 0, maxWidth: 760 }}>
-              Saved locally (for now). Your favorite games stay here even after refresh.
+              Your wishlist is now tied to your logged-in profile.
             </p>
           </div>
 
@@ -124,15 +155,23 @@ export default function Wishlist({ gamesData = [] }) {
 
         <div className="pillRow">
           <span className="pill soft">{wishedGames.length} games</span>
-          <span className="pill">Local save</span>
+          <span className="pill">User: {user.name}</span>
         </div>
       </section>
 
-      {wishedGames.length === 0 ? (
+      {loading ? (
+        <div className="card" style={{ marginTop: 14 }}>
+          Loading wishlist...
+        </div>
+      ) : error ? (
+        <div className="card" style={{ marginTop: 14 }}>
+          {error}
+        </div>
+      ) : wishedGames.length === 0 ? (
         <div className="card" style={{ marginTop: 14 }}>
           <h3 style={{ marginTop: 0, fontWeight: 950 }}>Your wishlist is empty</h3>
           <p className="muted" style={{ margin: "6px 0 12px" }}>
-            Go to the Games page and tap the ♡ button on any cover.
+            Go to the Games page and tap the heart button on any game.
           </p>
           <Link to="/games" className="btn primary">
             Browse Games
@@ -169,7 +208,7 @@ export default function Wishlist({ gamesData = [] }) {
                 </p>
 
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-                  {g.genres.slice(0, 3).map((tag) => (
+                  {(g.genres || []).slice(0, 3).map((tag) => (
                     <span key={tag} className="chip">
                       {tag}
                     </span>
@@ -180,7 +219,7 @@ export default function Wishlist({ gamesData = [] }) {
                   <Link to={`/games/${g.id}`} className="btn primary sm">
                     View Details
                   </Link>
-                  <button type="button" className="btn subtle sm" onClick={() => removeFromWishlist(g.id)}>
+                  <button type="button" className="btn subtle sm" onClick={() => handleRemove(g.id)}>
                     Remove
                   </button>
                 </div>

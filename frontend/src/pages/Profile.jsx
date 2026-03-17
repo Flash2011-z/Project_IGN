@@ -1,76 +1,112 @@
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser, setStoredUser } from "../utils/auth";
+import { fetchWishlistGames } from "../utils/wishlist";
 
-function safeString(v) {
-  return String(v || "").trim();
-}
+function formatJoinDate(value) {
+  if (!value) return "Just joined";
 
-function loadProfile() {
-  try {
-    const raw = localStorage.getItem("ign_profile");
-    const obj = raw ? JSON.parse(raw) : null;
-    if (!obj || typeof obj !== "object") return { username: "Guest", bio: "" };
-    return {
-      username: safeString(obj.username) || "Guest",
-      bio: safeString(obj.bio),
-    };
-  } catch {
-    return { username: "Guest", bio: "" };
-  }
-}
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Just joined";
 
-function saveProfile(p) {
-  try {
-    localStorage.setItem("ign_profile", JSON.stringify(p));
-  } catch {}
-}
-
-function loadWishlistCount() {
-  try {
-    const raw = localStorage.getItem("ign_wishlist");
-    const arr = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(arr)) return 0;
-    return arr.length;
-  } catch {
-    return 0;
-  }
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export default function Profile() {
-  const [profile, setProfile] = useState(() => loadProfile());
-  const [username, setUsername] = useState(profile.username);
-  const [bio, setBio] = useState(profile.bio);
+  const API_BASE = "http://localhost:3000";
 
-  const wishlistCount = useMemo(() => loadWishlistCount(), []);
+  const [user, setUser] = useState(() => getStoredUser());
+  const [wishlistCount, setWishlistCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // refresh wishlist count when profile page gains focus
-    function onFocus() {
-      // force re-render via state copy (simple + safe)
-      setProfile(loadProfile());
+    function refreshLocalUser() {
+      setUser(getStoredUser());
     }
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+
+    async function loadProfile() {
+      const stored = getStoredUser();
+      refreshLocalUser();
+
+      if (!stored?.id) {
+        setWishlistCount(0);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const [profileResult, wishlistResult] = await Promise.allSettled([
+          fetch(`${API_BASE}/profile/${stored.id}`),
+          fetchWishlistGames(stored.id),
+        ]);
+
+        if (profileResult.status === "fulfilled" && profileResult.value.ok) {
+          const data = await profileResult.value.json();
+
+          if (data?.user) {
+            const nextUser = setStoredUser(data.user);
+            setUser(nextUser);
+          }
+        }
+
+        if (wishlistResult.status === "fulfilled" && Array.isArray(wishlistResult.value)) {
+          setWishlistCount(wishlistResult.value.length);
+        } else {
+          setWishlistCount(0);
+        }
+      } catch {
+        setWishlistCount(0);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadProfile();
+
+    window.addEventListener("focus", loadProfile);
+    window.addEventListener("storage", refreshLocalUser);
+    window.addEventListener(AUTH_EVENT, loadProfile);
+    window.addEventListener(WISHLIST_EVENT, loadProfile);
+
+    return () => {
+      window.removeEventListener("focus", loadProfile);
+      window.removeEventListener("storage", refreshLocalUser);
+      window.removeEventListener(AUTH_EVENT, loadProfile);
+      window.removeEventListener(WISHLIST_EVENT, loadProfile);
+    };
   }, []);
 
-  function handleSave(e) {
-    e.preventDefault();
+  if (!user) {
+    return (
+      <div className="container" style={{ paddingBottom: 28 }}>
+        <section className="pageHero" style={{ marginTop: 12 }}>
+          <div className="pageHeroTop">
+            <div>
+              <div className="kicker">Account</div>
+              <h1 className="heroTitle">Profile</h1>
+              <p className="muted" style={{ margin: 0, maxWidth: 760 }}>
+                Sign in to view your profile.
+              </p>
+            </div>
+          </div>
+        </section>
 
-    const next = {
-      username: safeString(username) || "Guest",
-      bio: safeString(bio),
-    };
-
-    setProfile(next);
-    saveProfile(next);
-  }
-
-  function handleReset() {
-    const next = { username: "Guest", bio: "" };
-    setProfile(next);
-    setUsername(next.username);
-    setBio(next.bio);
-    saveProfile(next);
+        <div className="card" style={{ marginTop: 14, padding: 24 }}>
+          <h2 style={{ marginTop: 0, fontWeight: 950 }}>You are not logged in</h2>
+          <p className="muted" style={{ marginTop: 8, lineHeight: 1.6 }}>
+            Login or create an account to see your profile details.
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+            <Link to="/login" className="btn primary">Login</Link>
+            <Link to="/register" className="btn ghost">Register</Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -81,96 +117,94 @@ export default function Profile() {
             <div className="kicker">Account</div>
             <h1 className="heroTitle">Profile</h1>
             <p className="muted" style={{ margin: 0, maxWidth: 760 }}>
-              Local profile for now (no login). Later you can connect this with your database.
+              Your account information from the current logged-in user.
             </p>
           </div>
 
           <div className="heroBtns">
-            <Link to="/games" className="btn ghost">
-              Back to Games
-            </Link>
-            <Link to="/wishlist" className="btn subtle">
-              Wishlist
-            </Link>
+            <Link to="/games" className="btn ghost">Back to Games</Link>
+            <Link to="/wishlist" className="btn subtle">Wishlist</Link>
           </div>
         </div>
 
         <div className="pillRow">
-          <span className="pill soft">User: {profile.username}</span>
+          <span className="pill soft">User: {user.name}</span>
           <span className="pill">Wishlist: {wishlistCount}</span>
-          <span className="pill">Local save</span>
+          <span className="pill">Joined: {formatJoinDate(user.join_date)}</span>
         </div>
       </section>
 
-      <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 0.9fr", gap: 14, alignItems: "start" }}>
-        {/* Edit card */}
+      <div className="profile-grid">
         <div className="card">
-          <h2 style={{ marginTop: 0, fontWeight: 950, letterSpacing: -0.3 }}>Edit Profile</h2>
-          <p className="muted" style={{ marginTop: 6 }}>
-            This is just a clean UI layer. We’ll hook it to your `users` table later.
+          <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+            <div className="profile-avatar">
+              {(user.name || "U").charAt(0).toUpperCase()}
+            </div>
+
+            <div>
+              <h2 style={{ margin: 0, fontWeight: 950, letterSpacing: -0.3 }}>
+                {user.name}
+              </h2>
+              <p className="muted" style={{ margin: "6px 0 0" }}>
+                {user.email}
+              </p>
+            </div>
+          </div>
+
+          <p className="muted" style={{ marginTop: 6, lineHeight: 1.6 }}>
+            Username is controlled by your account data and cannot be changed from this page.
           </p>
 
-          <form onSubmit={handleSave} style={{ display: "grid", gap: 12, marginTop: 12 }}>
-            <div style={{ display: "grid", gap: 8 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>
+          {loading ? (
+            <div style={{ marginTop: 14, fontWeight: 800 }}>Loading profile...</div>
+          ) : null}
+
+          <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+            <div>
+              <div className="muted" style={{ fontWeight: 900, marginBottom: 8 }}>
                 Username
               </div>
-              <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Your name" />
+              <input className="input" value={user.name || ""} readOnly />
             </div>
 
-            <div style={{ display: "grid", gap: 8 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>
-                Bio
+            <div>
+              <div className="muted" style={{ fontWeight: 900, marginBottom: 8 }}>
+                Email
               </div>
-              <textarea
-                className="input"
-                rows={4}
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                placeholder="Write something short…"
-                style={{ resize: "vertical" }}
-              />
+              <input className="input" value={user.email || ""} readOnly />
             </div>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button type="submit" className="btn primary">
-                Save
-              </button>
-              <button type="button" className="btn subtle" onClick={handleReset}>
-                Reset
-              </button>
+            <div>
+              <div className="muted" style={{ fontWeight: 900, marginBottom: 8 }}>
+                Join Date
+              </div>
+              <input className="input" value={formatJoinDate(user.join_date)} readOnly />
             </div>
-
-            <div className="muted" style={{ fontWeight: 700 }}>
-              Tip: Later, replace localStorage with API calls (create user, update user, etc.).
-            </div>
-          </form>
+          </div>
         </div>
 
-        {/* Stats card */}
         <div className="card">
           <h3 style={{ marginTop: 0, fontWeight: 950 }}>Stats</h3>
 
           <div style={{ display: "grid", gap: 10 }}>
             <div className="glass" style={{ padding: 12 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>
-                Username
-              </div>
-              <div style={{ fontWeight: 900 }}>{profile.username}</div>
+              <div className="muted" style={{ fontWeight: 900 }}>Username</div>
+              <div style={{ fontWeight: 900 }}>{user.name}</div>
             </div>
 
             <div className="glass" style={{ padding: 12 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>
-                Wishlist items
-              </div>
+              <div className="muted" style={{ fontWeight: 900 }}>Wishlist items</div>
               <div style={{ fontWeight: 900 }}>{wishlistCount}</div>
             </div>
 
             <div className="glass" style={{ padding: 12 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>
-                Account type
-              </div>
-              <div style={{ fontWeight: 900 }}>Guest (local)</div>
+              <div className="muted" style={{ fontWeight: 900 }}>Account type</div>
+              <div style={{ fontWeight: 900 }}>Signed in</div>
+            </div>
+
+            <div className="glass" style={{ padding: 12 }}>
+              <div className="muted" style={{ fontWeight: 900 }}>Email</div>
+              <div style={{ fontWeight: 900 }}>{user.email}</div>
             </div>
 
             <Link to="/wishlist" className="btn primary" style={{ textAlign: "center" }}>
