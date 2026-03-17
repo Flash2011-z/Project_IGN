@@ -429,5 +429,38 @@ app.delete("/wishlist/:userId/:gameId", async (req, res) => {
   }
 });
 
+app.get("/profile/:id", async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        user_id AS id,
+        username AS name,
+        email,
+        join_date
+      FROM user_account
+      WHERE user_id = $1
+      LIMIT 1
+      `,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({ user: result.rows[0] });
+  } catch (err) {
+    console.error("GET /profile/:id error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 
 module.exports = app;
