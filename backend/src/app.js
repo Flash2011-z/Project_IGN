@@ -151,6 +151,150 @@ app.get("/games/:id", async (req, res) => {
   }
 });
 
+/* =========================
+   GAME REVIEWS
+   ========================= */
+
+/* Get all reviews for one game */
+app.get("/games/:id/reviews", async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.id, 10);
+
+    if (Number.isNaN(gameId)) {
+      return res.status(400).json({ error: "Invalid game id" });
+    }
+
+    const gameExists = await pool.query(
+      "SELECT 1 FROM game WHERE game_id = $1 LIMIT 1",
+      [gameId]
+    );
+
+    if (gameExists.rowCount === 0) {
+      return res.status(404).json({ error: "Game not found" });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        ur.user_review_id AS id,
+        ur.user_id AS "userId",
+        ua.username AS user,
+        ur.game_id AS "gameId",
+        ur.review_text AS text,
+        ur.score,
+        ur.review_date AS date
+      FROM user_review ur
+      JOIN user_account ua ON ur.user_id = ua.user_id
+      WHERE ur.game_id = $1
+      ORDER BY ur.review_date DESC
+      `,
+      [gameId]
+    );
+
+    const reviews = result.rows.map((row) => ({
+      ...row,
+      avatar: `https://api.dicebear.com/9.x/lorelei/svg?seed=${encodeURIComponent(
+        row.user || "Player"
+      )}`,
+    }));
+
+    return res.json(reviews);
+  } catch (err) {
+    console.error("GET /games/:id/reviews error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/* Write a review for one game */
+app.post("/games/:id/reviews", async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.id, 10);
+    const userId = parseInt(req.body.userId, 10);
+    const score = parseFloat(req.body.score);
+    const reviewText = String(req.body.reviewText || "").trim();
+
+    if (Number.isNaN(gameId) || Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid game id or user id" });
+    }
+
+    if (Number.isNaN(score) || score < 0 || score > 10) {
+      return res.status(400).json({ error: "Score must be between 0 and 10" });
+    }
+
+    if (reviewText.length < 10) {
+      return res.status(400).json({ error: "Review text must be at least 10 characters" });
+    }
+
+    const gameExists = await pool.query(
+      "SELECT 1 FROM game WHERE game_id = $1 LIMIT 1",
+      [gameId]
+    );
+
+    if (gameExists.rowCount === 0) {
+      return res.status(404).json({ error: "Game not found" });
+    }
+
+    const userExists = await pool.query(
+      "SELECT 1 FROM user_account WHERE user_id = $1 LIMIT 1",
+      [userId]
+    );
+
+    if (userExists.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const existingReview = await pool.query(
+      `
+      SELECT user_review_id
+      FROM user_review
+      WHERE user_id = $1 AND game_id = $2
+      LIMIT 1
+      `,
+      [userId, gameId]
+    );
+
+    if (existingReview.rowCount > 0) {
+      return res.status(409).json({ error: "You already reviewed this game" });
+    }
+
+    const created = await pool.query(
+      `
+      INSERT INTO user_review (user_id, game_id, review_text, score, review_date)
+      VALUES ($1, $2, $3, $4, NOW())
+      RETURNING user_review_id AS id
+      `,
+      [userId, gameId, reviewText, score]
+    );
+
+    await pool.query(
+      `
+      UPDATE game
+      SET avg_score = (
+        SELECT ROUND(AVG(score)::numeric, 1)
+        FROM user_review
+        WHERE game_id = $1
+      )
+      WHERE game_id = $1
+      `,
+      [gameId]
+    );
+
+    return res.status(201).json({
+      ok: true,
+      id: created.rows[0].id,
+      message: "Review submitted successfully",
+    });
+  } catch (err) {
+    console.error("POST /games/:id/reviews error:", err);
+
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "You already reviewed this game" });
+    }
+
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 /* Games list */
 app.get("/games", async (req, res) => {
   try {
@@ -194,6 +338,23 @@ app.get("/games", async (req, res) => {
    Columns: user_id, username, email, password_hash, join_date
    ========================= */
 
+const AVATAR_STYLES = [
+  "adventurer",
+  "adventurer-neutral",
+  "avataaars",
+  "big-smile",
+  "bottts",
+  "fun-emoji",
+  "icons",
+  "lorelei",
+  "micah",
+  "shapes",
+];
+
+function pickRandomAvatarStyle() {
+  return AVATAR_STYLES[Math.floor(Math.random() * AVATAR_STYLES.length)];
+}
+
 /* Register */
 app.post("/auth/register", async (req, res) => {
   try {
@@ -218,11 +379,15 @@ app.post("/auth/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
+    const avatarStyle = pickRandomAvatarStyle();
+    const avatarSeed = username;
+
     const created = await pool.query(
-      `INSERT INTO user_account (username, email, password_hash, join_date)
-       VALUES ($1, $2, $3, NOW())
-       RETURNING user_id, username, email, join_date`,
-      [username, email, passwordHash]
+      `INSERT INTO user_account
+       (username, email, password_hash, join_date, avatar_style, avatar_seed, bio)
+       VALUES ($1, $2, $3, NOW(), $4, $5, '')
+       RETURNING user_id, username, email, join_date, avatar_style, avatar_seed, bio`,
+      [username, email, passwordHash, avatarStyle, avatarSeed]
     );
 
     const u = created.rows[0];
@@ -233,6 +398,9 @@ app.post("/auth/register", async (req, res) => {
         name: u.username,
         email: u.email,
         join_date: u.join_date,
+        avatar_style: u.avatar_style,
+        avatar_seed: u.avatar_seed,
+        bio: u.bio,
       },
     });
   } catch (err) {
@@ -240,7 +408,6 @@ app.post("/auth/register", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-
 /* Login */
 app.post("/auth/login", async (req, res) => {
   try {
@@ -494,7 +661,10 @@ app.get("/profile/:id", async (req, res) => {
         user_id AS id,
         username AS name,
         email,
-        join_date
+        join_date,
+        COALESCE(avatar_style, 'adventurer') AS avatar_style,
+        COALESCE(avatar_seed, username) AS avatar_seed,
+        COALESCE(bio, '') AS bio
       FROM user_account
       WHERE user_id = $1
       LIMIT 1

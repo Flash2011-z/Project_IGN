@@ -26,36 +26,6 @@ const PLACEHOLDER =
   </svg>
 `);
 
-const seedReviews = [
-  {
-    id: 901,
-    gameId: 1,
-    user: "Gojo",
-    avatar: "https://api.dicebear.com/9.x/lorelei/svg?seed=Gojo",
-    score: 9.7,
-    text: "Cinematic storytelling, insane detail, and a world that feels alive. A masterpiece experience.",
-    date: "2026-02-09",
-  },
-  {
-    id: 902,
-    gameId: 2,
-    user: "Taklu",
-    avatar: "https://api.dicebear.com/9.x/lorelei/svg?seed=Naruto",
-    score: 9.1,
-    text: "Still the king of sandbox chaos. Missions, driving, and atmosphere are top-tier.",
-    date: "2026-02-08",
-  },
-  {
-    id: 903,
-    gameId: 3,
-    user: "Shafik",
-    avatar: "https://api.dicebear.com/9.x/lorelei/svg?seed=Mikasa",
-    score: 8.6,
-    text: "Night City looks unreal. Great build variety and combat, with strong vibe and story moments.",
-    date: "2026-02-07",
-  },
-];
-
 function safeInt(value) {
   const n = parseInt(value, 10);
   if (Number.isNaN(n)) return null;
@@ -71,6 +41,10 @@ function clamp(n, min, max) {
 function CoverImg({ src, alt, style }) {
   const [imgSrc, setImgSrc] = useState(src || PLACEHOLDER);
 
+  useEffect(() => {
+    setImgSrc(src || PLACEHOLDER);
+  }, [src]);
+
   return (
     <img
       src={imgSrc}
@@ -82,6 +56,12 @@ function CoverImg({ src, alt, style }) {
   );
 }
 
+function buildAvatar(name) {
+  return `https://api.dicebear.com/9.x/lorelei/svg?seed=${encodeURIComponent(
+    name || "Player"
+  )}`;
+}
+
 export default function GameDetails() {
   const params = useParams();
   const gameId = safeInt(params.id);
@@ -90,14 +70,20 @@ export default function GameDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [reviews, setReviews] = useState(seedReviews);
-  const [name, setName] = useState("");
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState("");
+
   const [score, setScore] = useState("9.0");
   const [text, setText] = useState("");
   const [reviewSort, setReviewSort] = useState("new");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState("");
 
   const [wishlist, setWishlist] = useState([]);
   const [addingListingId, setAddingListingId] = useState(null);
+
+  const currentUser = getStoredUser();
 
   useEffect(() => {
     async function fetchGame() {
@@ -117,7 +103,7 @@ export default function GameDetails() {
           id: data.id,
           title: data.title,
           subtitle: data.subtitle,
-          score: data.score,
+          score: Number(data.score || 0),
           year: data.year,
           genres: data.genres || [],
           platforms: data.platforms || [],
@@ -138,6 +124,33 @@ export default function GameDetails() {
     if (gameId !== null) {
       fetchGame();
     }
+  }, [gameId]);
+
+  useEffect(() => {
+    async function fetchReviews() {
+      if (gameId === null) return;
+
+      try {
+        setReviewsLoading(true);
+        setReviewsError("");
+
+        const response = await fetch(`${API_BASE}/games/${gameId}/reviews`);
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch reviews");
+        }
+
+        const data = await response.json();
+        setReviews(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setReviews([]);
+        setReviewsError("Failed to load reviews");
+      } finally {
+        setReviewsLoading(false);
+      }
+    }
+
+    fetchReviews();
   }, [gameId]);
 
   useEffect(() => {
@@ -220,55 +233,107 @@ export default function GameDetails() {
   const wished = game ? wishlist.indexOf(game.id) !== -1 : false;
 
   const gameReviews = useMemo(() => {
-    if (!game) return [];
-    const list = reviews.filter((r) => r.gameId === game.id);
+    const list = Array.isArray(reviews) ? reviews.slice() : [];
 
     if (reviewSort === "top") {
-      return list.slice(0).sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return String(b.date).localeCompare(String(a.date));
+      return list.sort((a, b) => {
+        const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
+        if (scoreDiff !== 0) return scoreDiff;
+        return String(b.date || "").localeCompare(String(a.date || ""));
       });
     }
 
-    return list.slice(0).sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  }, [reviews, game, reviewSort]);
+    return list.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  }, [reviews, reviewSort]);
 
   const avgScore = useMemo(() => {
-    if (!game) return 0;
-    if (gameReviews.length === 0) return game.score;
+    if (gameReviews.length === 0) return Number(game?.score || 0);
+
     let sum = 0;
-    for (let i = 0; i < gameReviews.length; i++) sum += gameReviews[i].score;
+    for (let i = 0; i < gameReviews.length; i++) {
+      sum += Number(gameReviews[i].score || 0);
+    }
+
     return Math.round((sum / gameReviews.length) * 10) / 10;
-  }, [game, gameReviews]);
+  }, [gameReviews, game]);
 
   const ratingFill = useMemo(() => clamp((avgScore / 10) * 100, 0, 100), [avgScore]);
 
-  function handleSubmit(e) {
+  const userHasReviewed = useMemo(() => {
+    if (!currentUser?.id) return false;
+    return gameReviews.some((r) => Number(r.userId) === Number(currentUser.id));
+  }, [gameReviews, currentUser]);
+
+  async function loadLatestReviews() {
+    if (gameId === null) return;
+
+    try {
+      const response = await fetch(`${API_BASE}/games/${gameId}/reviews`);
+      if (!response.ok) throw new Error("Failed");
+      const data = await response.json();
+      setReviews(Array.isArray(data) ? data : []);
+    } catch {
+      // keep existing reviews if reload fails
+    }
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault();
 
-    const trimmedName = String(name || "").trim();
+    const user = getStoredUser();
     const trimmedText = String(text || "").trim();
     const nScore = parseFloat(score);
 
+    setReviewMessage("");
+
     if (!game) return;
-    if (trimmedName.length === 0) return alert("Please enter your name.");
-    if (trimmedText.length < 10) return alert("Review text is too short (min 10 chars).");
-    if (Number.isNaN(nScore) || nScore < 0 || nScore > 10) return alert("Score must be between 0 and 10.");
 
-    const newReview = {
-      id: Date.now(),
-      gameId: game.id,
-      user: trimmedName,
-      avatar: "https://api.dicebear.com/9.x/lorelei/svg?seed=" + encodeURIComponent(trimmedName),
-      score: Math.round(nScore * 10) / 10,
-      text: trimmedText,
-      date: new Date().toISOString().slice(0, 10),
-    };
+    if (!user?.id) {
+      alert("Please login to write a review.");
+      return;
+    }
 
-    setReviews([newReview].concat(reviews));
-    setName("");
-    setScore("9.0");
-    setText("");
+    if (trimmedText.length < 10) {
+      alert("Review text is too short (min 10 chars).");
+      return;
+    }
+
+    if (Number.isNaN(nScore) || nScore < 0 || nScore > 10) {
+      alert("Score must be between 0 and 10.");
+      return;
+    }
+
+    try {
+      setSubmittingReview(true);
+
+      const response = await fetch(`${API_BASE}/games/${game.id}/reviews`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          score: Math.round(nScore * 10) / 10,
+          reviewText: trimmedText,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || "Failed to submit review.");
+        return;
+      }
+
+      setScore("9.0");
+      setText("");
+      setReviewMessage("Review submitted successfully.");
+      await loadLatestReviews();
+    } catch (err) {
+      alert("Failed to submit review.");
+    } finally {
+      setSubmittingReview(false);
+    }
   }
 
   function handleShare() {
@@ -623,7 +688,15 @@ export default function GameDetails() {
           </div>
 
           <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-            {gameReviews.length === 0 ? (
+            {reviewsLoading ? (
+              <div className="glass" style={{ padding: 12 }}>
+                <div className="muted">Loading reviews...</div>
+              </div>
+            ) : reviewsError ? (
+              <div className="glass" style={{ padding: 12 }}>
+                <div className="muted">{reviewsError}</div>
+              </div>
+            ) : gameReviews.length === 0 ? (
               <div className="glass" style={{ padding: 12 }}>
                 <div className="muted">No reviews yet. Add the first one below.</div>
               </div>
@@ -631,7 +704,7 @@ export default function GameDetails() {
               gameReviews.map((r) => (
                 <div key={r.id} className="glass" style={{ padding: 12, display: "flex", gap: 12 }}>
                   <img
-                    src={r.avatar}
+                    src={r.avatar || buildAvatar(r.user)}
                     alt={r.user}
                     style={{
                       width: 44,
@@ -647,7 +720,7 @@ export default function GameDetails() {
                       <div style={{ fontWeight: 950 }}>{r.user}</div>
                       <span className="muted">•</span>
                       <div className="muted" style={{ fontWeight: 800 }}>
-                        {r.date}
+                        {String(r.date || "").slice(0, 10)}
                       </div>
 
                       <div style={{ marginLeft: "auto", fontWeight: 950 }}>
@@ -659,7 +732,7 @@ export default function GameDetails() {
                             borderRadius: 999,
                           }}
                         >
-                          {r.score}
+                          {Number(r.score || 0).toFixed(1)}
                         </span>
                       </div>
                     </div>
@@ -675,42 +748,54 @@ export default function GameDetails() {
         </div>
 
         <div className="card">
-          <h3 style={{ marginTop: 0, fontWeight: 950 }}>Add a Review (sample)</h3>
+          <h3 style={{ marginTop: 0, fontWeight: 950 }}>Write a Review</h3>
 
-          <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 160px" }}>
-              <input
+          {!currentUser?.id ? (
+            <div className="glass" style={{ padding: 12 }}>
+              <div className="muted">Please login to write a review.</div>
+            </div>
+          ) : userHasReviewed ? (
+            <div className="glass" style={{ padding: 12 }}>
+              <div className="muted">You already reviewed this game.</div>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 160px" }}>
+                <input
+                  className="input"
+                  value={currentUser.name || "Player"}
+                  disabled
+                  readOnly
+                />
+
+                <input
+                  className="input"
+                  placeholder="Score (0-10)"
+                  value={score}
+                  onChange={(e) => setScore(e.target.value)}
+                />
+              </div>
+
+              <textarea
                 className="input"
-                placeholder="Your name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                rows={4}
+                placeholder="Write your review (min 10 characters)"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                style={{ resize: "vertical" }}
               />
 
-              <input
-                className="input"
-                placeholder="Score (0-10)"
-                value={score}
-                onChange={(e) => setScore(e.target.value)}
-              />
-            </div>
+              <button className="btn primary" type="submit" disabled={submittingReview}>
+                {submittingReview ? "Submitting..." : "Submit Review"}
+              </button>
 
-            <textarea
-              className="input"
-              rows={4}
-              placeholder="Write your review (min 10 characters)"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              style={{ resize: "vertical" }}
-            />
-
-            <button className="btn primary" type="submit">
-              Submit Review
-            </button>
-
-            <div className="muted" style={{ fontWeight: 700 }}>
-              Note: This is local-only sample data. When backend is ready, we’ll post the review to your API.
-            </div>
-          </form>
+              {reviewMessage ? (
+                <div className="muted" style={{ fontWeight: 700, color: "#9be37a" }}>
+                  {reviewMessage}
+                </div>
+              ) : null}
+            </form>
+          )}
         </div>
       </div>
     </div>

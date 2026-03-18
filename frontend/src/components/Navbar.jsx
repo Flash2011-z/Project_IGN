@@ -9,6 +9,7 @@ import {
 } from "../utils/auth";
 import { fetchWishlistGames } from "../utils/wishlist";
 import { fetchCart } from "../utils/cart";
+import { getAvatarUrl } from "../utils/avatar";
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export default function Navbar() {
   const [user, setUser] = useState(() => getStoredUser());
   const [wishCount, setWishCount] = useState(0);
   const [cartCount, setCartCount] = useState(0);
+  const avatarUrl = user ? getAvatarUrl(user) : null;
 
   useEffect(() => {
     async function refresh(nextUser = getStoredUser()) {
@@ -90,7 +92,7 @@ export default function Navbar() {
       }}
     >
       <div className="container nav-shell" style={{ display: "flex", alignItems: "center" }}>
-        
+
         {/* LOGO */}
         <Link to="/" style={{ fontWeight: 900, letterSpacing: 1, fontSize: 20 }}>
           <span style={{ color: "#ff2d55" }}>IGN</span>
@@ -113,7 +115,7 @@ export default function Navbar() {
 
         {/* RIGHT SIDE */}
         <div style={{ marginLeft: "auto", display: "flex", gap: 14, alignItems: "center" }}>
-          
+
           <NavLink to="/wishlist" className="nav-icon">
             ❤️
             {wishCount > 0 && <span className="nav-badge">{wishCount}</span>}
@@ -135,11 +137,51 @@ export default function Navbar() {
             </>
           ) : (
             <>
-              <Link to="/profile" className="btn ghost">
-                {user.name}
+              <Link
+                to="/profile"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  textDecoration: "none",
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    padding: 2,
+                    background: "linear-gradient(135deg, #ff2d55, #7c5cff, #00c2ff)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 6px 18px rgba(0,0,0,0.4)",
+                  }}
+                >
+                  <img
+                    src={avatarUrl}
+                    alt="avatar"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      background: "#111",
+                    }}
+                  />
+                </div>
+
+                <span style={{ fontWeight: 900, letterSpacing: 0.2 }}>
+                  {user.name}
+                </span>
               </Link>
               <Link to="/orders" className="btn ghost">
-                 Orders
+                Orders
               </Link>
 
               <button type="button" className="btn primary" onClick={handleLogout}>

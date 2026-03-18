@@ -4,6 +4,7 @@ import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser, setStoredUser } from "../uti
 import { fetchWishlistGames } from "../utils/wishlist";
 import { fetchCart } from "../utils/cart";
 import { fetchOrders } from "../utils/orders";
+import { getAvatarUrl } from "../utils/avatar";
 
 function formatJoinDate(value) {
   if (!value) return "Just joined";
@@ -131,7 +132,10 @@ export default function Profile() {
     );
   }
 
-  const initial = (user.name || "U").charAt(0).toUpperCase();
+  const avatarUrl = getAvatarUrl(user);
+  const bio =
+    user.bio ||
+    "Curating a personal collection of favorites, reviews, and upcoming purchases.";
 
   return (
     <div className="container" style={{ paddingBottom: 28 }}>
@@ -147,7 +151,7 @@ export default function Profile() {
         <div
           style={{
             background:
-              "linear-gradient(135deg, rgba(255,45,85,0.18), rgba(255,255,255,0.03) 45%, rgba(11,12,16,0.35))",
+              "radial-gradient(circle at top left, rgba(255,45,85,0.18), transparent 30%), linear-gradient(135deg, rgba(255,45,85,0.16), rgba(124,92,255,0.10) 45%, rgba(11,12,16,0.45))",
             padding: 24,
           }}
         >
@@ -160,18 +164,33 @@ export default function Profile() {
               flexWrap: "wrap",
             }}
           >
-            <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
               <div
-                className="profile-avatar"
                 style={{
-                  width: 88,
-                  height: 88,
-                  fontSize: 34,
-                  fontWeight: 950,
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.28)",
+                  width: 104,
+                  height: 104,
+                  borderRadius: "50%",
+                  padding: 4,
+                  background: "linear-gradient(135deg, #ff2d55, #7c5cff, #00c2ff)",
+                  boxShadow: "0 12px 35px rgba(0,0,0,0.35)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
                 }}
               >
-                {initial}
+                <img
+                  src={avatarUrl}
+                  alt={user.name || "User avatar"}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    background: "#111",
+                    border: "2px solid rgba(255,255,255,0.16)",
+                  }}
+                />
               </div>
 
               <div>
@@ -182,10 +201,30 @@ export default function Profile() {
                 <p className="muted" style={{ margin: "8px 0 0" }}>
                   {user.email}
                 </p>
+
                 <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <span className="pill soft">Member since {formatJoinDate(user.join_date)}</span>
-                  <span className="pill">Active account</span>
+                  <span
+                    className="pill"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(255,45,85,0.20), rgba(124,92,255,0.18))",
+                      border: "1px solid rgba(255,255,255,0.16)",
+                    }}
+                  >
+                    Premium Style
+                  </span>
                 </div>
+
+                <p
+                  style={{
+                    margin: "14px 0 0",
+                    maxWidth: 620,
+                    lineHeight: 1.65,
+                    color: "rgba(255,255,255,0.84)",
+                  }}
+                >
+                  {bio}
+                </p>
               </div>
             </div>
 
@@ -322,6 +361,11 @@ export default function Profile() {
             <div className="glass" style={{ padding: 12 }}>
               <div className="muted" style={{ fontWeight: 900, marginBottom: 6 }}>Status</div>
               <div style={{ fontWeight: 900 }}>Active</div>
+            </div>
+
+            <div className="glass" style={{ padding: 12 }}>
+              <div className="muted" style={{ fontWeight: 900, marginBottom: 6 }}>Avatar Style</div>
+              <div style={{ fontWeight: 900 }}>Generated Premium Avatar</div>
             </div>
           </div>
         </div>
