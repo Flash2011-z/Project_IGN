@@ -11,6 +11,11 @@ import GameDetails from "./pages/GameDetails";
 import NotFound from "./pages/NotFound";
 import Wishlist from "./pages/Wishlist";
 import Profile from "./pages/Profile";
+import Shop from "./pages/Shop";
+import Cart from "./pages/Cart";
+import Checkout from "./pages/Checkout";
+import OrderSuccess from "./pages/OrderSuccess";
+import Orders from "./pages/Orders";
 
 export default function App() {
   return (
@@ -30,6 +35,11 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
           <Route path="/wishlist" element={<Wishlist />} />
       <Route path="/profile" element={<Profile />} />
+      <Route path="/shop" element={<Shop />} />
+      <Route path="/cart" element={<Cart />} />
+      <Route path="/checkout" element={<Checkout />} />
+  <Route path="/order-success" element={<OrderSuccess />} />
+   <Route path="/orders" element={<Orders />} />
         </Routes>
       </main>
 

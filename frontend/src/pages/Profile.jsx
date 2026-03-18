@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser, setStoredUser } from "../utils/auth";
 import { fetchWishlistGames } from "../utils/wishlist";
+import { fetchCart } from "../utils/cart";
+import { fetchOrders } from "../utils/orders";
 
 function formatJoinDate(value) {
   if (!value) return "Just joined";
@@ -21,6 +23,8 @@ export default function Profile() {
 
   const [user, setUser] = useState(() => getStoredUser());
   const [wishlistCount, setWishlistCount] = useState(0);
+  const [cartCount, setCartCount] = useState(0);
+  const [ordersCount, setOrdersCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,19 +38,22 @@ export default function Profile() {
 
       if (!stored?.id) {
         setWishlistCount(0);
+        setCartCount(0);
+        setOrdersCount(0);
         setLoading(false);
         return;
       }
 
       try {
-        const [profileResult, wishlistResult] = await Promise.allSettled([
+        const [profileResult, wishlistResult, cartResult, ordersResult] = await Promise.allSettled([
           fetch(`${API_BASE}/profile/${stored.id}`),
           fetchWishlistGames(stored.id),
+          fetchCart(stored.id),
+          fetchOrders(stored.id),
         ]);
 
         if (profileResult.status === "fulfilled" && profileResult.value.ok) {
           const data = await profileResult.value.json();
-
           if (data?.user) {
             const nextUser = setStoredUser(data.user);
             setUser(nextUser);
@@ -58,8 +65,22 @@ export default function Profile() {
         } else {
           setWishlistCount(0);
         }
+
+        if (cartResult.status === "fulfilled" && cartResult.value) {
+          setCartCount(Number(cartResult.value.itemCount || 0));
+        } else {
+          setCartCount(0);
+        }
+
+        if (ordersResult.status === "fulfilled" && Array.isArray(ordersResult.value)) {
+          setOrdersCount(ordersResult.value.length);
+        } else {
+          setOrdersCount(0);
+        }
       } catch {
         setWishlistCount(0);
+        setCartCount(0);
+        setOrdersCount(0);
       } finally {
         setLoading(false);
       }
@@ -89,7 +110,7 @@ export default function Profile() {
               <div className="kicker">Account</div>
               <h1 className="heroTitle">Profile</h1>
               <p className="muted" style={{ margin: 0, maxWidth: 760 }}>
-                Sign in to view your profile.
+                Sign in to access your dashboard, order history, and saved games.
               </p>
             </div>
           </div>
@@ -98,8 +119,9 @@ export default function Profile() {
         <div className="card" style={{ marginTop: 14, padding: 24 }}>
           <h2 style={{ marginTop: 0, fontWeight: 950 }}>You are not logged in</h2>
           <p className="muted" style={{ marginTop: 8, lineHeight: 1.6 }}>
-            Login or create an account to see your profile details.
+            Login or create an account to unlock your personal dashboard.
           </p>
+
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
             <Link to="/login" className="btn primary">Login</Link>
             <Link to="/register" className="btn ghost">Register</Link>
@@ -109,107 +131,198 @@ export default function Profile() {
     );
   }
 
+  const initial = (user.name || "U").charAt(0).toUpperCase();
+
   return (
     <div className="container" style={{ paddingBottom: 28 }}>
-      <section className="pageHero" style={{ marginTop: 12 }}>
-        <div className="pageHeroTop">
-          <div>
-            <div className="kicker">Account</div>
-            <h1 className="heroTitle">Profile</h1>
-            <p className="muted" style={{ margin: 0, maxWidth: 760 }}>
-              Your account information from the current logged-in user.
-            </p>
-          </div>
+      <section
+        className="card"
+        style={{
+          marginTop: 14,
+          overflow: "hidden",
+          position: "relative",
+          padding: 0,
+        }}
+      >
+        <div
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(255,45,85,0.18), rgba(255,255,255,0.03) 45%, rgba(11,12,16,0.35))",
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 18,
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+              <div
+                className="profile-avatar"
+                style={{
+                  width: 88,
+                  height: 88,
+                  fontSize: 34,
+                  fontWeight: 950,
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.28)",
+                }}
+              >
+                {initial}
+              </div>
 
-          <div className="heroBtns">
-            <Link to="/games" className="btn ghost">Back to Games</Link>
-            <Link to="/wishlist" className="btn subtle">Wishlist</Link>
-          </div>
-        </div>
+              <div>
+                <div className="kicker">Account Center</div>
+                <h1 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 950, letterSpacing: -0.6 }}>
+                  {user.name}
+                </h1>
+                <p className="muted" style={{ margin: "8px 0 0" }}>
+                  {user.email}
+                </p>
+                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <span className="pill soft">Member since {formatJoinDate(user.join_date)}</span>
+                  <span className="pill">Active account</span>
+                </div>
+              </div>
+            </div>
 
-        <div className="pillRow">
-          <span className="pill soft">User: {user.name}</span>
-          <span className="pill">Wishlist: {wishlistCount}</span>
-          <span className="pill">Joined: {formatJoinDate(user.join_date)}</span>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link to="/shop" className="btn primary">Continue Shopping</Link>
+              <Link to="/orders" className="btn ghost">View Orders</Link>
+            </div>
+          </div>
         </div>
       </section>
 
-      <div className="profile-grid">
+      <div
+        style={{
+          marginTop: 14,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 14,
+        }}
+      >
+        <div className="card shadow-hover">
+          <div className="kicker">Saved</div>
+          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>{wishlistCount}</h3>
+          <p className="muted" style={{ marginBottom: 0 }}>Wishlist games</p>
+        </div>
+
+        <div className="card shadow-hover">
+          <div className="kicker">Cart</div>
+          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>{cartCount}</h3>
+          <p className="muted" style={{ marginBottom: 0 }}>Items ready to buy</p>
+        </div>
+
+        <div className="card shadow-hover">
+          <div className="kicker">Orders</div>
+          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>{ordersCount}</h3>
+          <p className="muted" style={{ marginBottom: 0 }}>Completed purchases</p>
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: 14,
+          display: "grid",
+          gridTemplateColumns: "1.2fr 0.8fr",
+          gap: 14,
+          alignItems: "start",
+        }}
+      >
         <div className="card">
-          <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
-            <div className="profile-avatar">
-              {(user.name || "U").charAt(0).toUpperCase()}
-            </div>
+          <h2 style={{ marginTop: 0, fontWeight: 950 }}>Quick Access</h2>
 
-            <div>
-              <h2 style={{ margin: 0, fontWeight: 950, letterSpacing: -0.3 }}>
-                {user.name}
-              </h2>
-              <p className="muted" style={{ margin: "6px 0 0" }}>
-                {user.email}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 14,
+              marginTop: 12,
+            }}
+          >
+            <Link
+              to="/wishlist"
+              className="card shadow-hover"
+              style={{ textDecoration: "none", color: "inherit", margin: 0 }}
+            >
+              <div className="kicker">Library</div>
+              <h3 style={{ marginTop: 6, fontWeight: 950 }}>Wishlist</h3>
+              <p className="muted" style={{ marginBottom: 0 }}>
+                Review your saved titles and favorites.
               </p>
-            </div>
-          </div>
+            </Link>
 
-          <p className="muted" style={{ marginTop: 6, lineHeight: 1.6 }}>
-            Username is controlled by your account data and cannot be changed from this page.
-          </p>
+            <Link
+              to="/cart"
+              className="card shadow-hover"
+              style={{ textDecoration: "none", color: "inherit", margin: 0 }}
+            >
+              <div className="kicker">Store</div>
+              <h3 style={{ marginTop: 6, fontWeight: 950 }}>Cart</h3>
+              <p className="muted" style={{ marginBottom: 0 }}>
+                Open your cart and continue checkout.
+              </p>
+            </Link>
 
-          {loading ? (
-            <div style={{ marginTop: 14, fontWeight: 800 }}>Loading profile...</div>
-          ) : null}
+            <Link
+              to="/orders"
+              className="card shadow-hover"
+              style={{ textDecoration: "none", color: "inherit", margin: 0 }}
+            >
+              <div className="kicker">History</div>
+              <h3 style={{ marginTop: 6, fontWeight: 950 }}>Orders</h3>
+              <p className="muted" style={{ marginBottom: 0 }}>
+                See your purchase history and receipts.
+              </p>
+            </Link>
 
-          <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
-            <div>
-              <div className="muted" style={{ fontWeight: 900, marginBottom: 8 }}>
-                Username
-              </div>
-              <input className="input" value={user.name || ""} readOnly />
-            </div>
-
-            <div>
-              <div className="muted" style={{ fontWeight: 900, marginBottom: 8 }}>
-                Email
-              </div>
-              <input className="input" value={user.email || ""} readOnly />
-            </div>
-
-            <div>
-              <div className="muted" style={{ fontWeight: 900, marginBottom: 8 }}>
-                Join Date
-              </div>
-              <input className="input" value={formatJoinDate(user.join_date)} readOnly />
-            </div>
+            <Link
+              to="/shop"
+              className="card shadow-hover"
+              style={{ textDecoration: "none", color: "inherit", margin: 0 }}
+            >
+              <div className="kicker">Explore</div>
+              <h3 style={{ marginTop: 6, fontWeight: 950 }}>Shop</h3>
+              <p className="muted" style={{ marginBottom: 0 }}>
+                Discover new listings and featured releases.
+              </p>
+            </Link>
           </div>
         </div>
 
-        <div className="card">
-          <h3 style={{ marginTop: 0, fontWeight: 950 }}>Stats</h3>
+        <div className="card" style={{ position: "sticky", top: 12 }}>
+          <h3 style={{ marginTop: 0, fontWeight: 950 }}>Account Snapshot</h3>
 
-          <div style={{ display: "grid", gap: 10 }}>
+          {loading ? (
+            <div className="glass" style={{ padding: 12, marginBottom: 12 }}>
+              Loading profile...
+            </div>
+          ) : null}
+
+          <div style={{ display: "grid", gap: 12 }}>
             <div className="glass" style={{ padding: 12 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>Username</div>
-              <div style={{ fontWeight: 900 }}>{user.name}</div>
+              <div className="muted" style={{ fontWeight: 900, marginBottom: 6 }}>Email</div>
+              <div style={{ fontWeight: 900, wordBreak: "break-word" }}>{user.email || "—"}</div>
             </div>
 
             <div className="glass" style={{ padding: 12 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>Wishlist items</div>
-              <div style={{ fontWeight: 900 }}>{wishlistCount}</div>
+              <div className="muted" style={{ fontWeight: 900, marginBottom: 6 }}>Member Since</div>
+              <div style={{ fontWeight: 900 }}>{formatJoinDate(user.join_date)}</div>
             </div>
 
             <div className="glass" style={{ padding: 12 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>Account type</div>
-              <div style={{ fontWeight: 900 }}>Signed in</div>
+              <div className="muted" style={{ fontWeight: 900, marginBottom: 6 }}>Plan</div>
+              <div style={{ fontWeight: 900 }}>Standard Member</div>
             </div>
 
             <div className="glass" style={{ padding: 12 }}>
-              <div className="muted" style={{ fontWeight: 900 }}>Email</div>
-              <div style={{ fontWeight: 900 }}>{user.email}</div>
+              <div className="muted" style={{ fontWeight: 900, marginBottom: 6 }}>Status</div>
+              <div style={{ fontWeight: 900 }}>Active</div>
             </div>
-
-            <Link to="/wishlist" className="btn primary" style={{ textAlign: "center" }}>
-              Open Wishlist
-            </Link>
           </div>
         </div>
       </div>

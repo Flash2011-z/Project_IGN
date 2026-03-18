@@ -3,16 +3,19 @@ import { useEffect, useState } from "react";
 import {
   AUTH_EVENT,
   WISHLIST_EVENT,
+  CART_EVENT,
   clearStoredUser,
   getStoredUser,
 } from "../utils/auth";
 import { fetchWishlistGames } from "../utils/wishlist";
+import { fetchCart } from "../utils/cart";
 
 export default function Navbar() {
   const navigate = useNavigate();
 
   const [user, setUser] = useState(() => getStoredUser());
   const [wishCount, setWishCount] = useState(0);
+  const [cartCount, setCartCount] = useState(0);
 
   useEffect(() => {
     async function refresh(nextUser = getStoredUser()) {
@@ -20,14 +23,21 @@ export default function Navbar() {
 
       if (!nextUser?.id) {
         setWishCount(0);
+        setCartCount(0);
         return;
       }
 
       try {
-        const wishedGames = await fetchWishlistGames(nextUser.id);
+        const [wishedGames, cart] = await Promise.all([
+          fetchWishlistGames(nextUser.id),
+          fetchCart(nextUser.id),
+        ]);
+
         setWishCount(wishedGames.length);
+        setCartCount(cart.itemCount || 0);
       } catch {
         setWishCount(0);
+        setCartCount(0);
       }
     }
 
@@ -41,16 +51,22 @@ export default function Navbar() {
       refresh(getStoredUser());
     }
 
+    function handleCart() {
+      refresh(getStoredUser());
+    }
+
     window.addEventListener("focus", handleWishlist);
     window.addEventListener("storage", handleAuth);
     window.addEventListener(AUTH_EVENT, handleAuth);
     window.addEventListener(WISHLIST_EVENT, handleWishlist);
+    window.addEventListener(CART_EVENT, handleCart);
 
     return () => {
       window.removeEventListener("focus", handleWishlist);
       window.removeEventListener("storage", handleAuth);
       window.removeEventListener(AUTH_EVENT, handleAuth);
       window.removeEventListener(WISHLIST_EVENT, handleWishlist);
+      window.removeEventListener(CART_EVENT, handleCart);
     };
   }, []);
 
@@ -58,6 +74,7 @@ export default function Navbar() {
     clearStoredUser();
     setUser(null);
     setWishCount(0);
+    setCartCount(0);
     navigate("/");
   }
 
@@ -67,17 +84,20 @@ export default function Navbar() {
         position: "sticky",
         top: 0,
         zIndex: 10,
-        background: "rgba(11,12,16,0.75)",
+        background: "rgba(11,12,16,0.85)",
         borderBottom: "1px solid rgba(255,255,255,0.08)",
-        backdropFilter: "blur(10px)",
+        backdropFilter: "blur(14px)",
       }}
     >
-      <div className="container nav-shell">
-        <Link to="/" style={{ fontWeight: 900, letterSpacing: 0.8, fontSize: 18 }}>
+      <div className="container nav-shell" style={{ display: "flex", alignItems: "center" }}>
+        
+        {/* LOGO */}
+        <Link to="/" style={{ fontWeight: 900, letterSpacing: 1, fontSize: 20 }}>
           <span style={{ color: "#ff2d55" }}>IGN</span>
         </Link>
 
-        <nav className="nav-links">
+        {/* CENTER NAV */}
+        <nav className="nav-links" style={{ marginLeft: 30 }}>
           <NavLink to="/" end className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
             Home
           </NavLink>
@@ -86,19 +106,23 @@ export default function Navbar() {
             Games
           </NavLink>
 
-          <NavLink to="/wishlist" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
-            Wishlist{wishCount > 0 ? <span className="wishCount">{wishCount}</span> : null}
+          <NavLink to="/shop" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+            Shop
           </NavLink>
-
-          {user ? (
-            <NavLink to="/profile" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
-              Profile
-            </NavLink>
-          ) : null}
         </nav>
 
-        <div className="nav-actions">
-          <input className="input nav-search" placeholder="Search games..." />
+        {/* RIGHT SIDE */}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 14, alignItems: "center" }}>
+          
+          <NavLink to="/wishlist" className="nav-icon">
+            ❤️
+            {wishCount > 0 && <span className="nav-badge">{wishCount}</span>}
+          </NavLink>
+
+          <NavLink to="/cart" className="nav-icon">
+            🛒
+            {cartCount > 0 && <span className="nav-badge">{cartCount}</span>}
+          </NavLink>
 
           {!user ? (
             <>
@@ -111,12 +135,13 @@ export default function Navbar() {
             </>
           ) : (
             <>
-              <Link to="/profile" className="btn nav-profile-btn" title={user.email || user.name || "Profile"}>
-                <span className="nav-profile-dot" aria-hidden="true">
-                  {(user.name || "P").charAt(0).toUpperCase()}
-                </span>
-                <span className="nav-profile-name">{user.name || "Profile"}</span>
+              <Link to="/profile" className="btn ghost">
+                {user.name}
               </Link>
+              <Link to="/orders" className="btn ghost">
+                 Orders
+              </Link>
+
               <button type="button" className="btn primary" onClick={handleLogout}>
                 Logout
               </button>

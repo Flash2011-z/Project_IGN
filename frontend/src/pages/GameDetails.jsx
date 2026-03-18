@@ -2,6 +2,8 @@ import { Link, useParams } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser } from "../utils/auth";
 import { addWishlistGame, fetchWishlistIds, removeWishlistGame } from "../utils/wishlist";
+import { addCartItem } from "../utils/cart";
+
 const API_BASE = "http://localhost:3000";
 
 const PLACEHOLDER =
@@ -84,17 +86,25 @@ export default function GameDetails() {
   const params = useParams();
   const gameId = safeInt(params.id);
 
-  // =============================
-  // FETCH GAME FROM BACKEND
-  // =============================
-
   const [game, setGame] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const [reviews, setReviews] = useState(seedReviews);
+  const [name, setName] = useState("");
+  const [score, setScore] = useState("9.0");
+  const [text, setText] = useState("");
+  const [reviewSort, setReviewSort] = useState("new");
+
+  const [wishlist, setWishlist] = useState([]);
+  const [addingListingId, setAddingListingId] = useState(null);
+
   useEffect(() => {
     async function fetchGame() {
       try {
+        setLoading(true);
+        setError(null);
+
         const response = await fetch(`${API_BASE}/games/${gameId}`);
 
         if (!response.ok) {
@@ -103,7 +113,6 @@ export default function GameDetails() {
 
         const data = await response.json();
 
-        // 🔥 Convert backend response to SAME structure as old static object
         setGame({
           id: data.id,
           title: data.title,
@@ -112,10 +121,12 @@ export default function GameDetails() {
           year: data.year,
           genres: data.genres || [],
           platforms: data.platforms || [],
-          developer: data.developer,
+          developer: data.developer || data.publisher || "Unknown",
+          publisher: data.publisher || "Unknown",
           cover: data.cover,
-          accent: data.accent,
+          accent: data.accent || "#ff2d55",
           description: data.description,
+          listings: Array.isArray(data.listings) ? data.listings : [],
         });
       } catch (err) {
         setError("Failed to fetch game");
@@ -128,16 +139,6 @@ export default function GameDetails() {
       fetchGame();
     }
   }, [gameId]);
-
-  const [reviews, setReviews] = useState(seedReviews);
-  const [name, setName] = useState("");
-  const [score, setScore] = useState("9.0");
-  const [text, setText] = useState("");
-
-  const [reviewSort, setReviewSort] = useState("new"); // new | top
-
-  // Wishlist (account-based)
-  const [wishlist, setWishlist] = useState([]);
 
   useEffect(() => {
     async function loadWishlist() {
@@ -197,6 +198,25 @@ export default function GameDetails() {
     }
   }
 
+  async function handleAddToCart(listingId) {
+    const user = getStoredUser();
+
+    if (!user?.id) {
+      alert("Please login first to add items to cart.");
+      return;
+    }
+
+    try {
+      setAddingListingId(listingId);
+      await addCartItem(user.id, listingId, 1);
+      alert("Added to cart.");
+    } catch (err) {
+      alert(err.message || "Failed to add to cart.");
+    } finally {
+      setAddingListingId(null);
+    }
+  }
+
   const wished = game ? wishlist.indexOf(game.id) !== -1 : false;
 
   const gameReviews = useMemo(() => {
@@ -210,7 +230,6 @@ export default function GameDetails() {
       });
     }
 
-    // new
     return list.slice(0).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }, [reviews, game, reviewSort]);
 
@@ -261,7 +280,7 @@ export default function GameDetails() {
         .share({
           title: game.title,
           text: "Check this game:",
-          url: url,
+          url,
         })
         .catch(() => {});
       return;
@@ -325,7 +344,6 @@ export default function GameDetails() {
 
   return (
     <div className="container" style={{ paddingBottom: 24 }}>
-      {/* Top actions */}
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <Link to="/games" className="btn ghost">
           ← Back
@@ -351,7 +369,6 @@ export default function GameDetails() {
         </div>
       </div>
 
-      {/* Hero poster */}
       <section className="card" style={{ marginTop: 14, padding: 0, overflow: "hidden", borderRadius: 18 }}>
         <div
           className="poster"
@@ -361,7 +378,6 @@ export default function GameDetails() {
             overflow: "hidden",
           }}
         >
-          {/* Use image fallback instead of background-image */}
           <CoverImg
             src={game.cover}
             alt={game.title}
@@ -374,7 +390,6 @@ export default function GameDetails() {
             }}
           />
 
-          {/* overlay shade is already handled by .poster::before in your CSS */}
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "end" }}>
             <div style={{ padding: 16, width: "100%" }}>
               <div
@@ -391,11 +406,11 @@ export default function GameDetails() {
                   <div className="muted" style={{ fontWeight: 900 }}>
                     {game.subtitle} • {game.year}
                   </div>
+
                   <h1 style={{ margin: "6px 0 0", fontSize: 36, fontWeight: 950, letterSpacing: -0.7 }}>
                     {game.title}
                   </h1>
 
-                  {/* tiny premium rating bar */}
                   <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <div
                       style={{
@@ -415,6 +430,7 @@ export default function GameDetails() {
                         }}
                       />
                     </div>
+
                     <div className="muted" style={{ fontWeight: 800 }}>
                       Community score
                     </div>
@@ -438,7 +454,6 @@ export default function GameDetails() {
             </div>
           </div>
 
-          {/* corner wishlist icon (optional, feels premium) */}
           <button
             type="button"
             className={"wishBtn " + (wished ? "active" : "")}
@@ -451,7 +466,6 @@ export default function GameDetails() {
         </div>
       </section>
 
-      {/* Details */}
       <div
         style={{
           marginTop: 14,
@@ -463,6 +477,7 @@ export default function GameDetails() {
       >
         <div className="card">
           <h2 style={{ marginTop: 0, fontWeight: 950, letterSpacing: -0.3 }}>Overview</h2>
+
           <p className="text-premium" style={{ marginTop: 8 }}>
             {game.description}
           </p>
@@ -485,9 +500,58 @@ export default function GameDetails() {
               </span>
             ))}
           </div>
+
+          {game.listings?.length > 0 ? (
+            <div style={{ marginTop: 22 }}>
+              <h3 style={{ marginTop: 0, fontWeight: 950 }}>Available Stores</h3>
+
+              <div style={{ display: "grid", gap: 12 }}>
+                {game.listings.map((listing) => (
+                  <div
+                    key={listing.listing_id}
+                    className="glass"
+                    style={{
+                      padding: 12,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 14,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: 17 }}>
+                        {listing.store_name || "Store"}
+                      </div>
+
+                      <div className="muted" style={{ marginTop: 4 }}>
+                        {Number(listing.price || 0).toFixed(2)} {listing.currency}
+                      </div>
+
+                      <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                        {listing.stock_status || "Unknown stock"}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={() => handleAddToCart(listing.listing_id)}
+                      disabled={addingListingId === listing.listing_id}
+                    >
+                      {addingListingId === listing.listing_id ? "Adding..." : "Add to Cart"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="glass" style={{ padding: 12, marginTop: 22 }}>
+              <div className="muted">No active store listings available for this game yet.</div>
+            </div>
+          )}
         </div>
 
-        {/* Sticky info card on desktop (premium feel) */}
         <div className="card" style={{ position: "sticky", top: 12 }}>
           <h3 style={{ marginTop: 0, fontWeight: 950 }}>Game Info</h3>
 
@@ -513,18 +577,29 @@ export default function GameDetails() {
               <div style={{ fontWeight: 900 }}>{game.year}</div>
             </div>
 
+            <div className="glass" style={{ padding: 12 }}>
+              <div className="muted" style={{ fontWeight: 900 }}>
+                Publisher
+              </div>
+              <div style={{ fontWeight: 900 }}>{game.publisher}</div>
+            </div>
+
             <Link to="/games" className="btn primary" style={{ textAlign: "center" }}>
               Browse More
+            </Link>
+
+            <Link to="/cart" className="btn ghost" style={{ textAlign: "center" }}>
+              Open Cart
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Reviews */}
       <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
         <div className="card">
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <h2 style={{ margin: 0, fontWeight: 950, letterSpacing: -0.3 }}>Reviews</h2>
+
             <span className="muted" style={{ fontWeight: 800 }}>
               ({gameReviews.length})
             </span>
@@ -566,6 +641,7 @@ export default function GameDetails() {
                       background: "rgba(255,255,255,0.06)",
                     }}
                   />
+
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                       <div style={{ fontWeight: 950 }}>{r.user}</div>
@@ -587,6 +663,7 @@ export default function GameDetails() {
                         </span>
                       </div>
                     </div>
+
                     <p style={{ margin: "8px 0 0" }} className="text-premium">
                       {r.text}
                     </p>
@@ -597,7 +674,6 @@ export default function GameDetails() {
           </div>
         </div>
 
-        {/* Add review */}
         <div className="card">
           <h3 style={{ marginTop: 0, fontWeight: 950 }}>Add a Review (sample)</h3>
 

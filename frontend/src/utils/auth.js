@@ -3,7 +3,7 @@ export const PROFILE_STORAGE_KEY = "ign_profile";
 export const AUTH_EVENT = "ign-auth-changed";
 export const PROFILE_EVENT = "ign-profile-changed";
 export const WISHLIST_EVENT = "ign-wishlist-changed";
-
+export const CART_EVENT = "ign-cart-changed";
 function safeParse(raw, fallback = null) {
   try {
     return raw ? JSON.parse(raw) : fallback;
