@@ -3,6 +3,7 @@ import { useMemo, useState, useEffect } from "react";
 import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser } from "../utils/auth";
 import { addWishlistGame, fetchWishlistIds, removeWishlistGame } from "../utils/wishlist";
 import { addCartItem } from "../utils/cart";
+import { getAvatarUrl } from "../utils/avatar";
 
 const API_BASE = "http://localhost:3000";
 
@@ -56,11 +57,6 @@ function CoverImg({ src, alt, style }) {
   );
 }
 
-function buildAvatar(name) {
-  return `https://api.dicebear.com/9.x/lorelei/svg?seed=${encodeURIComponent(
-    name || "Player"
-  )}`;
-}
 
 export default function GameDetails() {
   const params = useParams();
@@ -704,7 +700,7 @@ export default function GameDetails() {
               gameReviews.map((r) => (
                 <div key={r.id} className="glass" style={{ padding: 12, display: "flex", gap: 12 }}>
                   <img
-                    src={r.avatar || buildAvatar(r.user)}
+                    src={r.avatar || getAvatarUrl(r)}
                     alt={r.user}
                     style={{
                       width: 44,

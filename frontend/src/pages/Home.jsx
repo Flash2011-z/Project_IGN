@@ -1,8 +1,6 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-
-
-
+import { AUTH_EVENT, getStoredUser } from "../utils/auth";
 
 function formatDate(iso) {
   return iso;
@@ -11,44 +9,55 @@ function formatDate(iso) {
 export default function Home() {
   const API_BASE = "http://localhost:3000";
 
-const [hero, setHero] = useState(null);
-const [featuredGames, setFeaturedGames] = useState([]);
-const [latestReviews, setLatestReviews] = useState([]);
-const [loading, setLoading] = useState(true);
+  const [hero, setHero] = useState(null);
+  const [featuredGames, setFeaturedGames] = useState([]);
+  const [latestReviews, setLatestReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(() => getStoredUser());
 
   useEffect(() => {
-  async function loadHome() {
-    try {
-      const [heroRes, featuredRes, reviewRes] = await Promise.all([
-        fetch(`${API_BASE}/home/hero`),
-        fetch(`${API_BASE}/home/featured`),
-        fetch(`${API_BASE}/home/reviews`)
-      ]);
+    async function loadHome() {
+      try {
+        const [heroRes, featuredRes, reviewRes] = await Promise.all([
+          fetch(`${API_BASE}/home/hero`),
+          fetch(`${API_BASE}/home/featured`),
+          fetch(`${API_BASE}/home/reviews`),
+        ]);
 
-      const heroData = await heroRes.json();
-      const featuredData = await featuredRes.json();
-      const reviewData = await reviewRes.json();
+        const heroData = await heroRes.json();
+        const featuredData = await featuredRes.json();
+        const reviewData = await reviewRes.json();
 
-      setHero(heroData);
-      setFeaturedGames(featuredData);
-      setLatestReviews(reviewData);
-      setLoading(false);
-    } catch (err) {
-      console.error(err);
-      setLoading(false);
+        setHero(heroData);
+        setFeaturedGames(featuredData);
+        setLatestReviews(reviewData);
+        setLoading(false);
+      } catch (err) {
+        console.error(err);
+        setLoading(false);
+      }
     }
+
+    function syncUser() {
+      setUser(getStoredUser());
+    }
+
+    loadHome();
+    window.addEventListener("storage", syncUser);
+    window.addEventListener(AUTH_EVENT, syncUser);
+
+    return () => {
+      window.removeEventListener("storage", syncUser);
+      window.removeEventListener(AUTH_EVENT, syncUser);
+    };
+  }, []);
+
+  if (loading || !hero) {
+    return <div className="container">Loading homepage...</div>;
   }
-
-  loadHome();
-}, []);
-
-   if (loading || !hero) {
-  return <div className="container">Loading homepage...</div>;
-}
 
   return (
     <div className="container" style={{ paddingBottom: 22 }}>
-      {/* HERO (big + premium) */}
       <section
         className="card"
         style={{
@@ -118,20 +127,25 @@ const [loading, setLoading] = useState(true);
               <Link to="/games" className="btn">
                 Browse Games
               </Link>
-              <Link to="/login" className="btn">
-                Login to Review
-              </Link>
+              {user ? (
+                <Link to={`/games/${hero.id}`} className="btn">
+                  Write a Review
+                </Link>
+              ) : (
+                <Link to="/login" className="btn">
+                  Login to Review
+                </Link>
+              )}
             </div>
           </div>
         </div>
       </section>
 
-      {/* FEATURED GRID TITLE */}
       <div style={{ display: "flex", gap: 12, alignItems: "center", margin: "18px 0 10px" }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, letterSpacing: 0.2 }}>
           Featured Games
         </h2>
-        <span style={{ opacity: 0.70 }}>Premium picks</span>
+        <span style={{ opacity: 0.7 }}>Premium picks</span>
 
         <div style={{ marginLeft: "auto" }}>
           <Link to="/games" className="btn">
@@ -140,7 +154,6 @@ const [loading, setLoading] = useState(true);
         </div>
       </div>
 
-      {/* BIG CARDS (bigger images + premium overlays) */}
       <div
         style={{
           display: "grid",
@@ -162,14 +175,13 @@ const [loading, setLoading] = useState(true);
           >
             <div
               style={{
-                height: 260, // ✅ bigger image
+                height: 260,
                 backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.78)), url(${g.cover})`,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 position: "relative",
               }}
             >
-              {/* Score badge */}
               <div
                 style={{
                   position: "absolute",
@@ -186,7 +198,6 @@ const [loading, setLoading] = useState(true);
                 {g.score}
               </div>
 
-              {/* Bottom text overlay */}
               <div style={{ position: "absolute", left: 14, right: 14, bottom: 14 }}>
                 <h3
                   style={{
@@ -239,124 +250,119 @@ const [loading, setLoading] = useState(true);
         ))}
       </div>
 
-     {/* LATEST REVIEWS */}
-<div style={{ display: "flex", gap: 12, alignItems: "baseline", marginTop: 22 }}>
-  <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, letterSpacing: 0.2 }}>
-    Latest Reviews
-  </h2>
-  <span style={{ opacity: 0.70 }}>Community feedback</span>
-</div>
-
-<div style={{ display: "grid", gap: 12, marginTop: 10 }}>
-  {latestReviews.map((r) => (
-    <div
-      key={r.id}
-      className="card shadow-hover"
-      style={{
-        display: "flex",
-        gap: 14,
-        alignItems: "stretch",
-        padding: 14,
-        border: "1px solid rgba(255,255,255,0.14)",
-        background:
-          "linear-gradient(120deg, rgba(255,255,255,0.08), rgba(255,255,255,0.05))",
-        boxShadow: `0 18px 50px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.05)`,
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      {/* Accent glow */}
-      <div
-        style={{
-          position: "absolute",
-          inset: -80,
-          background: `radial-gradient(circle at 20% 20%, ${r.accent}33, transparent 55%)`,
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* LEFT: score box (same as your style) */}
-      <div
-        style={{
-          minWidth: 78,
-          borderRadius: 16,
-          background: `linear-gradient(180deg, ${r.accent}55, rgba(255,255,255,0.10))`,
-          border: `1px solid ${r.accent}55`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontWeight: 950,
-          fontSize: 18,
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        {r.score}
+      <div style={{ display: "flex", gap: 12, alignItems: "baseline", marginTop: 22 }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, letterSpacing: 0.2 }}>
+          Latest Reviews
+        </h2>
+        <span style={{ opacity: 0.7 }}>Community feedback</span>
       </div>
 
-      {/* RIGHT: avatar + content */}
-      <div style={{ flex: 1, position: "relative", zIndex: 1 }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {/* Anime avatar */}
+      <div style={{ display: "grid", gap: 12, marginTop: 10 }}>
+        {latestReviews.map((r) => (
           <div
+            key={r.id}
+            className="card shadow-hover"
             style={{
-              width: 46,
-              height: 46,
-              borderRadius: 14,
-              overflow: "hidden",
-              border: `1px solid ${r.accent}66`,
-              background: "rgba(255,255,255,0.08)",
-              boxShadow: "0 12px 26px rgba(0,0,0,0.35)",
-              flexShrink: 0,
-            }}
-          >
-            <img
-              src={r.avatar}
-              alt={r.user}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          </div>
-
-          <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>{r.user}</div>
-
-          <span style={{ opacity: 0.7, fontSize: 12 }}>{formatDate(r.date)}</span>
-
-          <span style={{ marginLeft: "auto", opacity: 0.92, fontWeight: 900 }}>
-            {r.game}
-          </span>
-        </div>
-
-        <p style={{ margin: "10px 0 0", opacity: 0.88, fontSize: 15, lineHeight: 1.65 }}>
-          {r.text}
-        </p>
-
-        <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link to={`/games/${r.gameId}`} className="btn">
-            View Game
-          </Link>
-
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 10px",
-              borderRadius: 999,
-              background: "rgba(255,255,255,0.10)",
+              display: "flex",
+              gap: 14,
+              alignItems: "stretch",
+              padding: 14,
               border: "1px solid rgba(255,255,255,0.14)",
-              backdropFilter: "blur(10px)",
-              fontWeight: 800,
-              opacity: 0.92,
+              background:
+                "linear-gradient(120deg, rgba(255,255,255,0.08), rgba(255,255,255,0.05))",
+              boxShadow: `0 18px 50px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.05)`,
+              position: "relative",
+              overflow: "hidden",
             }}
           >
-            ✨ Featured
-          </span>
-        </div>
+            <div
+              style={{
+                position: "absolute",
+                inset: -80,
+                background: `radial-gradient(circle at 20% 20%, ${r.accent}33, transparent 55%)`,
+                pointerEvents: "none",
+              }}
+            />
+
+            <div
+              style={{
+                minWidth: 78,
+                borderRadius: 16,
+                background: `linear-gradient(180deg, ${r.accent}55, rgba(255,255,255,0.10))`,
+                border: `1px solid ${r.accent}55`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 950,
+                fontSize: 18,
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              {r.score}
+            </div>
+
+            <div style={{ flex: 1, position: "relative", zIndex: 1 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div
+                  style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    border: `1px solid ${r.accent}66`,
+                    background: "rgba(255,255,255,0.08)",
+                    boxShadow: "0 12px 26px rgba(0,0,0,0.35)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <img
+                    src={r.avatar}
+                    alt={r.user}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </div>
+
+                <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>{r.user}</div>
+
+                <span style={{ opacity: 0.7, fontSize: 12 }}>{formatDate(r.date)}</span>
+
+                <span style={{ marginLeft: "auto", opacity: 0.92, fontWeight: 900 }}>
+                  {r.game}
+                </span>
+              </div>
+
+              <p style={{ margin: "10px 0 0", opacity: 0.88, fontSize: 15, lineHeight: 1.65 }}>
+                {r.text}
+              </p>
+
+              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Link to={`/games/${r.gameId}`} className="btn">
+                  View Game
+                </Link>
+
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,0.10)",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    backdropFilter: "blur(10px)",
+                    fontWeight: 800,
+                    opacity: 0.92,
+                  }}
+                >
+                  ✨ Featured
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
-    </div>
-  ))}
-</div>
-      {/* PREMIUM CTA */}
+
       <div
         className="card"
         style={{
@@ -375,18 +381,28 @@ const [loading, setLoading] = useState(true);
           <h3 style={{ margin: 0, fontWeight: 950, letterSpacing: -0.2 }}>
             Ready to build your profile?
           </h3>
-          <p style={{ margin: "6px 0 0", opacity: 0.80 }}>
-            Login to rate games and write reviews. We’ll connect to your backend API later.
+          <p style={{ margin: "6px 0 0", opacity: 0.8 }}>
+            {user
+              ? "You are logged in — jump into a game page to rate it and write your review."
+              : "Login to rate games and write reviews."}
           </p>
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <Link to="/login" className="btn">
-            Login
-          </Link>
-          <Link to="/register" className="btn primary">
-            Create account
-          </Link>
+          {user ? (
+            <Link to="/profile" className="btn primary">
+              Go to profile
+            </Link>
+          ) : (
+            <>
+              <Link to="/login" className="btn">
+                Login
+              </Link>
+              <Link to="/register" className="btn primary">
+                Create account
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </div>
