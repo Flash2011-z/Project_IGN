@@ -751,7 +751,6 @@ app.delete("/wishlist/:userId/:gameId", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-
 /* =========================
    PROFILE
    ========================= */
@@ -791,7 +790,349 @@ app.get("/profile/:id", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+app.put("/profile/:id", async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
 
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const username = String(req.body.username || "").trim();
+    const bio = String(req.body.bio || "");
+    const avatarStyle = String(req.body.avatar_style || "").trim();
+    const avatarSeed = String(req.body.avatar_seed || "").trim();
+
+    const allowedAvatarStyles = [
+      "adventurer",
+      "adventurer-neutral",
+      "avataaars",
+      "big-smile",
+      "bottts",
+      "fun-emoji",
+      "icons",
+      "lorelei",
+      "micah",
+      "shapes",
+    ];
+
+    if (!username) {
+      return res.status(400).json({ error: "Username is required" });
+    }
+
+    if (username.length < 3) {
+      return res.status(400).json({ error: "Username must be at least 3 characters" });
+    }
+
+    if (username.length > 40) {
+      return res.status(400).json({ error: "Username must be at most 40 characters" });
+    }
+
+    if (bio.length > 300) {
+      return res.status(400).json({ error: "Bio must be at most 300 characters" });
+    }
+
+    if (avatarStyle && !allowedAvatarStyles.includes(avatarStyle)) {
+      return res.status(400).json({ error: "Invalid avatar style" });
+    }
+
+    const existingUser = await pool.query(
+      "SELECT user_id FROM user_account WHERE user_id = $1 LIMIT 1",
+      [userId]
+    );
+
+    if (existingUser.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const duplicateName = await pool.query(
+      `
+      SELECT user_id
+      FROM user_account
+      WHERE LOWER(username) = LOWER($1) AND user_id <> $2
+      LIMIT 1
+      `,
+      [username, userId]
+    );
+
+    if (duplicateName.rowCount > 0) {
+      return res.status(409).json({ error: "Username is already taken" });
+    }
+
+    const updated = await pool.query(
+      `
+      UPDATE user_account
+      SET
+        username = $1,
+        bio = $2,
+        avatar_style = $3,
+        avatar_seed = $4
+      WHERE user_id = $5
+      RETURNING
+        user_id AS id,
+        username AS name,
+        email,
+        join_date,
+        COALESCE(avatar_style, 'adventurer') AS avatar_style,
+        COALESCE(avatar_seed, username) AS avatar_seed,
+        COALESCE(bio, '') AS bio
+      `,
+      [
+        username,
+        bio,
+        avatarStyle || "adventurer",
+        avatarSeed || username,
+        userId,
+      ]
+    );
+
+    return res.json({
+      ok: true,
+      message: "Profile updated successfully",
+      user: updated.rows[0],
+    });
+  } catch (err) {
+    console.error("PUT /profile/:id error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/profile/:id/password", async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    const currentPassword = String(req.body.currentPassword || "");
+    const newPassword = String(req.body.newPassword || "");
+
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Current password and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "New password must be at least 6 characters" });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT user_id, password_hash
+      FROM user_account
+      WHERE user_id = $1
+      LIMIT 1
+      `,
+      [userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = result.rows[0];
+    const match = await bcrypt.compare(currentPassword, user.password_hash || "");
+
+    if (!match) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    await pool.query(
+      `
+      UPDATE user_account
+      SET password_hash = $1
+      WHERE user_id = $2
+      `,
+      [newHash, userId]
+    );
+
+    return res.json({
+      ok: true,
+      message: "Password updated successfully",
+    });
+  } catch (err) {
+    console.error("PUT /profile/:id/password error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/profile/:id", async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const username = String(req.body.username || "").trim();
+    const bio = String(req.body.bio || "").trim();
+    const avatarStyle = String(req.body.avatar_style || "").trim();
+    const avatarSeed = String(req.body.avatar_seed || "").trim();
+
+    const allowedAvatarStyles = [
+      "adventurer",
+      "adventurer-neutral",
+      "avataaars",
+      "big-smile",
+      "bottts",
+      "fun-emoji",
+      "icons",
+      "lorelei",
+      "micah",
+      "shapes",
+    ];
+
+    if (!username) {
+      return res.status(400).json({ error: "Username is required" });
+    }
+
+    if (username.length < 3) {
+      return res
+        .status(400)
+        .json({ error: "Username must be at least 3 characters" });
+    }
+
+    if (username.length > 40) {
+      return res
+        .status(400)
+        .json({ error: "Username must be at most 40 characters" });
+    }
+
+    if (bio.length > 300) {
+      return res
+        .status(400)
+        .json({ error: "Bio must be at most 300 characters" });
+    }
+
+    if (avatarStyle && !allowedAvatarStyles.includes(avatarStyle)) {
+      return res.status(400).json({ error: "Invalid avatar style" });
+    }
+
+    const existingUser = await pool.query(
+      "SELECT user_id FROM user_account WHERE user_id = $1 LIMIT 1",
+      [userId]
+    );
+
+    if (existingUser.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const duplicateName = await pool.query(
+      `
+      SELECT user_id
+      FROM user_account
+      WHERE LOWER(username) = LOWER($1) AND user_id <> $2
+      LIMIT 1
+      `,
+      [username, userId]
+    );
+
+    if (duplicateName.rowCount > 0) {
+      return res.status(409).json({ error: "Username is already taken" });
+    }
+
+    const updated = await pool.query(
+      `
+      UPDATE user_account
+      SET
+        username = $1,
+        bio = $2,
+        avatar_style = $3,
+        avatar_seed = $4
+      WHERE user_id = $5
+      RETURNING
+        user_id AS id,
+        username AS name,
+        email,
+        join_date,
+        COALESCE(avatar_style, 'adventurer') AS avatar_style,
+        COALESCE(avatar_seed, username) AS avatar_seed,
+        COALESCE(bio, '') AS bio
+      `,
+      [
+        username,
+        bio,
+        avatarStyle || "adventurer",
+        avatarSeed || username,
+        userId,
+      ]
+    );
+
+    return res.json({
+      ok: true,
+      message: "Profile updated successfully",
+      user: updated.rows[0],
+    });
+  } catch (err) {
+    console.error("PUT /profile/:id error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/profile/:id/password", async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    const currentPassword = String(req.body.currentPassword || "");
+    const newPassword = String(req.body.newPassword || "");
+
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ error: "Current password and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res
+        .status(400)
+        .json({ error: "New password must be at least 6 characters" });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT user_id, password_hash
+      FROM user_account
+      WHERE user_id = $1
+      LIMIT 1
+      `,
+      [userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = result.rows[0];
+    const match = await bcrypt.compare(currentPassword, user.password_hash || "");
+
+    if (!match) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    await pool.query(
+      `
+      UPDATE user_account
+      SET password_hash = $1
+      WHERE user_id = $2
+      `,
+      [newHash, userId]
+    );
+
+    return res.json({
+      ok: true,
+      message: "Password updated successfully",
+    });
+  } catch (err) {
+    console.error("PUT /profile/:id/password error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
 /* =========================
    SHOP
    ========================= */

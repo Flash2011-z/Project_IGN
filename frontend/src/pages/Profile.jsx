@@ -229,7 +229,8 @@ export default function Profile() {
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link to="/shop" className="btn primary">Continue Shopping</Link>
+              <Link to="/profile/edit" className="btn primary">Edit your profile</Link>
+              <Link to="/shop" className="btn ghost">Continue Shopping</Link>
               <Link to="/orders" className="btn ghost">View Orders</Link>
             </div>
           </div>
@@ -246,19 +247,25 @@ export default function Profile() {
       >
         <div className="card shadow-hover">
           <div className="kicker">Saved</div>
-          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>{wishlistCount}</h3>
+          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>
+            {loading ? "..." : wishlistCount}
+          </h3>
           <p className="muted" style={{ marginBottom: 0 }}>Wishlist games</p>
         </div>
 
         <div className="card shadow-hover">
           <div className="kicker">Cart</div>
-          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>{cartCount}</h3>
+          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>
+            {loading ? "..." : cartCount}
+          </h3>
           <p className="muted" style={{ marginBottom: 0 }}>Items ready to buy</p>
         </div>
 
         <div className="card shadow-hover">
           <div className="kicker">Orders</div>
-          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>{ordersCount}</h3>
+          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>
+            {loading ? "..." : ordersCount}
+          </h3>
           <p className="muted" style={{ marginBottom: 0 }}>Completed purchases</p>
         </div>
       </div>
@@ -365,7 +372,7 @@ export default function Profile() {
 
             <div className="glass" style={{ padding: 12 }}>
               <div className="muted" style={{ fontWeight: 900, marginBottom: 6 }}>Avatar Style</div>
-              <div style={{ fontWeight: 900 }}>Generated Premium Avatar</div>
+              <div style={{ fontWeight: 900 }}>{user.avatar_style || "Generated Premium Avatar"}</div>
             </div>
           </div>
         </div>

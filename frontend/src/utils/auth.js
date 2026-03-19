@@ -50,21 +50,6 @@ export function setStoredUser(user) {
   };
 
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(normalized));
-
-  const existingProfile = getStoredProfile();
-  const profileName = String(existingProfile?.username ?? "").trim();
-
-  if (!profileName) {
-    localStorage.setItem(
-      PROFILE_STORAGE_KEY,
-      JSON.stringify({
-        username: normalized.name || "Guest",
-        bio: existingProfile?.bio ?? "",
-      })
-    );
-    dispatchWindowEvent(PROFILE_EVENT);
-  }
-
   dispatchWindowEvent(AUTH_EVENT);
   return normalized;
 }
@@ -79,43 +64,31 @@ export function getStoredProfile() {
   if (typeof window === "undefined") return { username: "Guest", bio: "" };
 
   const user = getStoredUser();
-  const obj = safeParse(localStorage.getItem(PROFILE_STORAGE_KEY), null);
-
-  if (!obj || typeof obj !== "object") {
-    return {
-      username: user?.name || "Guest",
-      bio: "",
-    };
-  }
 
   return {
-    username: String(obj.username || user?.name || "Guest").trim() || "Guest",
-    bio: String(obj.bio || "").trim(),
+    username: user?.name || "Guest",
+    bio: user?.bio || "",
   };
 }
 
 export function saveStoredProfile(profile) {
   if (typeof window === "undefined") return null;
 
+  const user = getStoredUser();
+  if (!user) return null;
+
   const next = {
-    username: String(profile?.username || "Guest").trim() || "Guest",
+    ...user,
+    name: String(profile?.username || user.name || "Guest").trim(),
     bio: String(profile?.bio || "").trim(),
   };
 
-  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(next));
-
-  const user = getStoredUser();
-  if (user) {
-    localStorage.setItem(
-      AUTH_STORAGE_KEY,
-      JSON.stringify({
-        ...user,
-        name: next.username,
-      })
-    );
-    dispatchWindowEvent(AUTH_EVENT);
-  }
-
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
+  dispatchWindowEvent(AUTH_EVENT);
   dispatchWindowEvent(PROFILE_EVENT);
-  return next;
+
+  return {
+    username: next.name,
+    bio: next.bio,
+  };
 }
