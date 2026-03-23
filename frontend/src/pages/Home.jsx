@@ -1,19 +1,45 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { AUTH_EVENT, getStoredUser } from "../utils/auth";
+import { AUTH_EVENT, getStoredUser, getStoredToken } from "../utils/auth";
 
 function formatDate(iso) {
   return iso;
 }
 
 export default function Home() {
-  const API_BASE = "http://localhost:3000";
+  const API_BASE = "http://localhost:4000";
 
   const [hero, setHero] = useState(null);
   const [featuredGames, setFeaturedGames] = useState([]);
   const [latestReviews, setLatestReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(() => getStoredUser());
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!getStoredToken() && !!getStoredUser()?.id);
+
+  useEffect(() => {
+    function checkAuth() {
+      const token = getStoredToken();
+      const storedUser = getStoredUser();
+
+      if (token && storedUser?.id) {
+        setUser(storedUser);
+        setIsLoggedIn(true);
+      } else {
+        setIsLoggedIn(false);
+        setUser(null);
+      }
+    }
+
+    checkAuth();
+
+    window.addEventListener("storage", checkAuth);
+    window.addEventListener(AUTH_EVENT, checkAuth);
+
+    return () => {
+      window.removeEventListener("storage", checkAuth);
+      window.removeEventListener(AUTH_EVENT, checkAuth);
+    };
+  }, []);
 
   useEffect(() => {
     async function loadHome() {
@@ -21,7 +47,7 @@ export default function Home() {
         const [heroRes, featuredRes, reviewRes] = await Promise.all([
           fetch(`${API_BASE}/home/hero`),
           fetch(`${API_BASE}/home/featured`),
-          fetch(`${API_BASE}/home/reviews`),
+          fetch(`${API_BASE}/home/reviews`)
         ]);
 
         const heroData = await heroRes.json();
@@ -38,18 +64,7 @@ export default function Home() {
       }
     }
 
-    function syncUser() {
-      setUser(getStoredUser());
-    }
-
     loadHome();
-    window.addEventListener("storage", syncUser);
-    window.addEventListener(AUTH_EVENT, syncUser);
-
-    return () => {
-      window.removeEventListener("storage", syncUser);
-      window.removeEventListener(AUTH_EVENT, syncUser);
-    };
   }, []);
 
   if (loading || !hero) {
@@ -127,11 +142,7 @@ export default function Home() {
               <Link to="/games" className="btn">
                 Browse Games
               </Link>
-              {user ? (
-                <Link to={`/games/${hero.id}`} className="btn">
-                  Write a Review
-                </Link>
-              ) : (
+              {!isLoggedIn && (
                 <Link to="/login" className="btn">
                   Login to Review
                 </Link>
@@ -145,7 +156,7 @@ export default function Home() {
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, letterSpacing: 0.2 }}>
           Featured Games
         </h2>
-        <span style={{ opacity: 0.7 }}>Premium picks</span>
+        <span style={{ opacity: 0.70 }}>Premium picks</span>
 
         <div style={{ marginLeft: "auto" }}>
           <Link to="/games" className="btn">
@@ -254,7 +265,7 @@ export default function Home() {
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, letterSpacing: 0.2 }}>
           Latest Reviews
         </h2>
-        <span style={{ opacity: 0.7 }}>Community feedback</span>
+        <span style={{ opacity: 0.70 }}>Community feedback</span>
       </div>
 
       <div style={{ display: "grid", gap: 12, marginTop: 10 }}>
@@ -363,48 +374,40 @@ export default function Home() {
         ))}
       </div>
 
-      <div
-        className="card"
-        style={{
-          marginTop: 18,
-          padding: 16,
-          borderRadius: 18,
-          background: "linear-gradient(120deg, rgba(255,45,85,0.20), rgba(255,255,255,0.06))",
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <h3 style={{ margin: 0, fontWeight: 950, letterSpacing: -0.2 }}>
-            Ready to build your profile?
-          </h3>
-          <p style={{ margin: "6px 0 0", opacity: 0.8 }}>
-            {user
-              ? "You are logged in — jump into a game page to rate it and write your review."
-              : "Login to rate games and write reviews."}
-          </p>
-        </div>
+      {!isLoggedIn && (
+        <div
+          className="card"
+          style={{
+            marginTop: 18,
+            padding: 16,
+            borderRadius: 18,
+            background: "linear-gradient(120deg, rgba(255,45,85,0.20), rgba(255,255,255,0.06))",
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0, fontWeight: 950, letterSpacing: -0.2 }}>
+              Ready to build your profile?
+            </h3>
+            <p style={{ margin: "6px 0 0", opacity: 0.80 }}>
+              Login to rate games and write reviews.
+            </p>
+          </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          {user ? (
-            <Link to="/profile" className="btn primary">
-              Go to profile
+          <div style={{ display: "flex", gap: 10 }}>
+            <Link to="/login" className="btn">
+              Login
             </Link>
-          ) : (
-            <>
-              <Link to="/login" className="btn">
-                Login
-              </Link>
-              <Link to="/register" className="btn primary">
-                Create account
-              </Link>
-            </>
-          )}
+            <Link to="/register" className="btn primary">
+              Create account
+            </Link>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

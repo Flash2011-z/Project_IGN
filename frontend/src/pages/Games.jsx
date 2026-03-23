@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser } from "../utils/auth";
 import { addWishlistGame, fetchWishlistIds, removeWishlistGame } from "../utils/wishlist";
-const API_BASE = "http://localhost:3000";
+const API_BASE = "http://localhost:4000";
 
 const PLACEHOLDER =
   "data:image/svg+xml;utf8," +

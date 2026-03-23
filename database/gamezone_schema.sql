@@ -172,14 +172,14 @@ CREATE TABLE price_history (
 
 CREATE TABLE cart (
   cart_id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  user_id INT UNIQUE REFERENCES user_account(user_id) ON DELETE CASCADE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE cart_item (
   cart_id INT REFERENCES cart(cart_id) ON DELETE CASCADE,
   listing_id INT REFERENCES game_store_listing(listing_id) ON DELETE CASCADE,
-  quantity INT NOT NULL DEFAULT 1,
+  quantity INT NOT NULL DEFAULT 1 CHECK (quantity > 0),
   PRIMARY KEY (cart_id, listing_id)
 );
 

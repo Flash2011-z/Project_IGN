@@ -11,43 +11,66 @@
   - Shop APIs
   - Cart APIs
 */
-
+const jwt = require("jsonwebtoken");
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const pool = require("./config/db");
+const path = require("path");
 
 const app = express();
+const JWT_SECRET = process.env.JWT_SECRET || "super-secret-change-this";
+const JWT_EXPIRES_IN = "7d";
+
+function signToken(user) {
+  return jwt.sign(
+    {
+      id: user.user_id ?? user.id,
+      email: user.email,
+    },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+}
+
+function requireAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const [scheme, token] = authHeader.split(" ");
+
+    if (scheme !== "Bearer" || !token) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.authUser = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+
+function requireSameUser(req, res, next) {
+  const routeUserId = parseInt(
+    req.params.userId || req.params.id,
+    10
+  );
+
+  if (Number.isNaN(routeUserId)) {
+    return res.status(400).json({ error: "Invalid user id" });
+  }
+
+  if (!req.authUser || Number(req.authUser.id) !== routeUserId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  next();
+}
 
 /* Allow frontend to call backend */
 app.use(cors());
 app.use(express.json());
 app.use("/images", express.static("images"));
-
-const AVATAR_STYLES = [
-  "adventurer",
-  "adventurer-neutral",
-  "avataaars",
-  "big-smile",
-  "bottts",
-  "fun-emoji",
-  "icons",
-  "lorelei",
-  "micah",
-  "shapes",
-];
-
-function pickRandomAvatarStyle() {
-  return AVATAR_STYLES[Math.floor(Math.random() * AVATAR_STYLES.length)];
-}
-
-function buildDicebearAvatar(style, seed) {
-  const avatarStyle = style || "adventurer";
-  const avatarSeed = seed || "Player";
-  return `https://api.dicebear.com/9.x/${avatarStyle}/svg?seed=${encodeURIComponent(
-    avatarSeed
-  )}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`;
-}
 
 async function getOrCreateCart(userId) {
   const existing = await pool.query(
@@ -69,101 +92,6 @@ async function getOrCreateCart(userId) {
   );
 
   return created.rows[0].cart_id;
-}
-
-async function getCartItemsForCheckout(userId) {
-  const result = await pool.query(
-    `
-    SELECT
-      c.cart_id,
-      ci.listing_id,
-      ci.quantity,
-      gsl.price,
-      gsl.currency,
-      g.game_id,
-      g.title,
-      g.cover_url AS cover,
-      s.name AS store_name,
-      (ci.quantity * gsl.price) AS subtotal
-    FROM cart c
-    JOIN cart_item ci ON c.cart_id = ci.cart_id
-    JOIN game_store_listing gsl ON ci.listing_id = gsl.listing_id
-    JOIN game g ON gsl.game_id = g.game_id
-    LEFT JOIN store s ON gsl.store_id = s.store_id
-    WHERE c.user_id = $1
-    ORDER BY ci.listing_id ASC
-    `,
-    [userId]
-  );
-
-  return result.rows.map((row) => ({
-    ...row,
-    price: Number(row.price || 0),
-    subtotal: Number(row.subtotal || 0),
-    quantity: Number(row.quantity || 0),
-  }));
-}
-
-async function buildSingleOrder(orderId, userId) {
-  const orderResult = await pool.query(
-    `
-    SELECT
-      o.order_id,
-      o.user_id,
-      o.total_amount,
-      o.total_items,
-      o.currency,
-      o.payment_method,
-      o.customer_name,
-      o.customer_email,
-      o.billing_address,
-      o.order_status,
-      o.created_at
-    FROM customer_order o
-    WHERE o.order_id = $1 AND o.user_id = $2
-    LIMIT 1
-    `,
-    [orderId, userId]
-  );
-
-  if (orderResult.rows.length === 0) {
-    return null;
-  }
-
-  const itemsResult = await pool.query(
-    `
-    SELECT
-      oi.order_item_id,
-      oi.order_id,
-      oi.listing_id,
-      oi.game_id,
-      oi.quantity,
-      oi.unit_price,
-      oi.subtotal,
-      g.title,
-      g.cover_url AS cover,
-      s.name AS store_name
-    FROM order_item oi
-    JOIN game g ON oi.game_id = g.game_id
-    LEFT JOIN game_store_listing gsl ON oi.listing_id = gsl.listing_id
-    LEFT JOIN store s ON gsl.store_id = s.store_id
-    WHERE oi.order_id = $1
-    ORDER BY oi.order_item_id ASC
-    `,
-    [orderId]
-  );
-
-  return {
-    ...orderResult.rows[0],
-    total_amount: Number(orderResult.rows[0].total_amount || 0),
-    total_items: Number(orderResult.rows[0].total_items || 0),
-    items: itemsResult.rows.map((row) => ({
-      ...row,
-      quantity: Number(row.quantity || 0),
-      unit_price: Number(row.unit_price || 0),
-      subtotal: Number(row.subtotal || 0),
-    })),
-  };
 }
 
 /* Health check */
@@ -197,44 +125,6 @@ app.get("/games-with-publisher", async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
-  }
-});
-
-/* Games list */
-app.get("/games", async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT
-        g.game_id AS id,
-        g.title,
-        g.subtitle,
-        g.avg_score AS score,
-        g.release_year AS year,
-        g.cover_url AS cover,
-        g.accent_color AS accent,
-        p.name AS developer,
-        COALESCE(
-          ARRAY_REMOVE(ARRAY_AGG(DISTINCT genre.genre_name), NULL),
-          '{}'
-        ) AS genres,
-        COALESCE(
-          ARRAY_REMOVE(ARRAY_AGG(DISTINCT platform.platform_name), NULL),
-          '{}'
-        ) AS platforms
-      FROM game g
-      LEFT JOIN publisher p ON g.publisher_id = p.publisher_id
-      LEFT JOIN game_genre gg ON g.game_id = gg.game_id
-      LEFT JOIN genre ON gg.genre_id = genre.genre_id
-      LEFT JOIN game_platform gp ON g.game_id = gp.game_id
-      LEFT JOIN platform ON gp.platform_id = platform.platform_id
-      GROUP BY g.game_id, p.name
-      ORDER BY g.game_id ASC
-    `);
-
-    res.json(result.rows);
-  } catch (err) {
-    console.error("GET /games error:", err);
-    res.status(500).json({ error: err.message });
   }
 });
 
@@ -336,8 +226,6 @@ app.get("/games/:id/reviews", async (req, res) => {
         ur.user_review_id AS id,
         ur.user_id AS "userId",
         ua.username AS user,
-        COALESCE(ua.avatar_style, 'adventurer') AS avatar_style,
-        COALESCE(ua.avatar_seed, ua.username) AS avatar_seed,
         ur.game_id AS "gameId",
         ur.review_text AS text,
         ur.score,
@@ -352,7 +240,9 @@ app.get("/games/:id/reviews", async (req, res) => {
 
     const reviews = result.rows.map((row) => ({
       ...row,
-      avatar: buildDicebearAvatar(row.avatar_style, row.avatar_seed || row.user),
+      avatar: `https://api.dicebear.com/9.x/lorelei/svg?seed=${encodeURIComponent(
+        row.user || "Player"
+      )}`,
     }));
 
     return res.json(reviews);
@@ -363,10 +253,10 @@ app.get("/games/:id/reviews", async (req, res) => {
 });
 
 /* Write a review for one game */
-app.post("/games/:id/reviews", async (req, res) => {
+app.post("/games/:id/reviews", requireAuth, async (req, res) => {
   try {
     const gameId = parseInt(req.params.id, 10);
-    const userId = parseInt(req.body.userId, 10);
+    const userId = Number(req.authUser?.id);
     const score = parseFloat(req.body.score);
     const reviewText = String(req.body.reviewText || "").trim();
 
@@ -379,9 +269,7 @@ app.post("/games/:id/reviews", async (req, res) => {
     }
 
     if (reviewText.length < 10) {
-      return res
-        .status(400)
-        .json({ error: "Review text must be at least 10 characters" });
+      return res.status(400).json({ error: "Review text must be at least 10 characters" });
     }
 
     const gameExists = await pool.query(
@@ -454,10 +342,65 @@ app.post("/games/:id/reviews", async (req, res) => {
   }
 });
 
+/* Games list */
+app.get("/games", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        g.game_id AS id,
+        g.title,
+        g.subtitle,
+        g.avg_score AS score,
+        g.release_year AS year,
+        g.cover_url AS cover,
+        g.accent_color AS accent,
+        p.name AS developer,
+        COALESCE(
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT genre.genre_name), NULL),
+          '{}'
+        ) AS genres,
+        COALESCE(
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT platform.platform_name), NULL),
+          '{}'
+        ) AS platforms
+      FROM game g
+      LEFT JOIN publisher p ON g.publisher_id = p.publisher_id
+      LEFT JOIN game_genre gg ON g.game_id = gg.game_id
+      LEFT JOIN genre ON gg.genre_id = genre.genre_id
+      LEFT JOIN game_platform gp ON g.game_id = gp.game_id
+      LEFT JOIN platform ON gp.platform_id = platform.platform_id
+      GROUP BY g.game_id, p.name
+      ORDER BY g.game_id ASC
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("GET /games error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* =========================
    AUTH (user_account)
    Columns: user_id, username, email, password_hash, join_date
    ========================= */
+
+const AVATAR_STYLES = [
+  "adventurer",
+  "adventurer-neutral",
+  "avataaars",
+  "big-smile",
+  "bottts",
+  "fun-emoji",
+  "icons",
+  "lorelei",
+  "micah",
+  "shapes",
+];
+
+function pickRandomAvatarStyle() {
+  return AVATAR_STYLES[Math.floor(Math.random() * AVATAR_STYLES.length)];
+}
 
 /* Register */
 app.post("/auth/register", async (req, res) => {
@@ -465,15 +408,11 @@ app.post("/auth/register", async (req, res) => {
     const { username, email, password } = req.body;
 
     if (!username || !email || !password) {
-      return res
-        .status(400)
-        .json({ error: "username, email, password are required" });
+      return res.status(400).json({ error: "username, email, password are required" });
     }
 
     if (password.length < 6) {
-      return res
-        .status(400)
-        .json({ error: "Password must be at least 6 characters" });
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
     }
 
     const exists = await pool.query(
@@ -491,35 +430,34 @@ app.post("/auth/register", async (req, res) => {
     const avatarSeed = username;
 
     const created = await pool.query(
-      `
-      INSERT INTO user_account
-        (username, email, password_hash, join_date, avatar_style, avatar_seed, bio)
-      VALUES
-        ($1, $2, $3, NOW(), $4, $5, '')
-      RETURNING user_id, username, email, join_date, avatar_style, avatar_seed, bio
-      `,
+      `INSERT INTO user_account
+       (username, email, password_hash, join_date, avatar_style, avatar_seed, bio)
+       VALUES ($1, $2, $3, NOW(), $4, $5, '')
+       RETURNING user_id, username, email, join_date, avatar_style, avatar_seed, bio`,
       [username, email, passwordHash, avatarStyle, avatarSeed]
     );
 
     const u = created.rows[0];
 
-    return res.status(201).json({
-      user: {
-        id: u.user_id,
-        name: u.username,
-        email: u.email,
-        join_date: u.join_date,
-        avatar_style: u.avatar_style,
-        avatar_seed: u.avatar_seed,
-        bio: u.bio,
-      },
-    });
+const token = signToken(u);
+
+return res.status(201).json({
+  token,
+  user: {
+    id: u.user_id,
+    name: u.username,
+    email: u.email,
+    join_date: u.join_date,
+    avatar_style: u.avatar_style,
+    avatar_seed: u.avatar_seed,
+    bio: u.bio,
+  },
+});
   } catch (err) {
     console.error("POST /auth/register error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
-
 /* Login */
 app.post("/auth/login", async (req, res) => {
   try {
@@ -530,12 +468,22 @@ app.post("/auth/login", async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT user_id, username, email, password_hash, join_date, avatar_style, avatar_seed, COALESCE(bio, '') AS bio
-       FROM user_account
-       WHERE email = $1
-       LIMIT 1`,
-      [email]
-    );
+  `
+  SELECT
+    user_id,
+    username,
+    email,
+    password_hash,
+    join_date,
+    COALESCE(avatar_style, 'adventurer') AS avatar_style,
+    COALESCE(avatar_seed, username) AS avatar_seed,
+    COALESCE(bio, '') AS bio
+  FROM user_account
+  WHERE email = $1
+  LIMIT 1
+  `,
+  [email]
+);
 
     if (result.rows.length === 0) {
       return res.status(401).json({ error: "Invalid email or password" });
@@ -548,17 +496,20 @@ app.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    return res.json({
-      user: {
-        id: user.user_id,
-        name: user.username,
-        email: user.email,
-        join_date: user.join_date,
-        avatar_style: user.avatar_style,
-        avatar_seed: user.avatar_seed,
-        bio: user.bio,
-      },
-    });
+const token = signToken(user);
+
+return res.json({
+  token,
+  user: {
+    id: user.user_id,
+    name: user.username,
+    email: user.email,
+    join_date: user.join_date,
+    avatar_style: user.avatar_style,
+    avatar_seed: user.avatar_seed,
+    bio: user.bio,
+  },
+});
   } catch (err) {
     console.error("POST /auth/login error:", err);
     return res.status(500).json({ error: err.message });
@@ -612,14 +563,20 @@ app.get("/home/featured", async (req, res) => {
 });
 
 app.get("/home/reviews", async (req, res) => {
+  const AVATARS = [
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=NeoKnight",
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=CyberSamurai",
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=ShadowNinja",
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=PixelWarrior",
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=ArcaneMage"
+  ];
+
   try {
     const result = await pool.query(`
       SELECT 
         ur.user_review_id AS id,
         ur.user_id,
         u.username AS user,
-        COALESCE(u.avatar_style, 'adventurer') AS avatar_style,
-        COALESCE(u.avatar_seed, u.username) AS avatar_seed,
         ur.game_id AS "gameId",
         g.title AS game,
         ur.review_text AS text,
@@ -635,7 +592,7 @@ app.get("/home/reviews", async (req, res) => {
 
     const reviewsWithAvatar = result.rows.map((r) => ({
       ...r,
-      avatar: buildDicebearAvatar(r.avatar_style, r.avatar_seed || r.user),
+      avatar: AVATARS[r.user_id % AVATARS.length]
     }));
 
     res.json(reviewsWithAvatar);
@@ -648,12 +605,25 @@ app.get("/home/reviews", async (req, res) => {
    WISHLIST
    ========================= */
 
-app.get("/wishlist/:userId", async (req, res) => {
+/* =========================
+   WISHLIST
+   ========================= */
+
+app.get("/wishlist/:userId", requireAuth, requireSameUser, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
 
     if (Number.isNaN(userId)) {
       return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const userExists = await pool.query(
+      "SELECT 1 FROM user_account WHERE user_id = $1 LIMIT 1",
+      [userId]
+    );
+
+    if (userExists.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
     }
 
     const result = await pool.query(
@@ -684,7 +654,16 @@ app.get("/wishlist/:userId", async (req, res) => {
       LEFT JOIN game_platform gp ON g.game_id = gp.game_id
       LEFT JOIN platform ON gp.platform_id = platform.platform_id
       WHERE w.user_id = $1
-      GROUP BY g.game_id, p.name, w.added_date
+      GROUP BY
+        g.game_id,
+        g.title,
+        g.subtitle,
+        g.avg_score,
+        g.release_year,
+        g.cover_url,
+        g.accent_color,
+        p.name,
+        w.added_date
       ORDER BY w.added_date DESC
       `,
       [userId]
@@ -697,13 +676,22 @@ app.get("/wishlist/:userId", async (req, res) => {
   }
 });
 
-app.post("/wishlist/:userId", async (req, res) => {
+app.post("/wishlist/:userId", requireAuth, requireSameUser, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
     const gameId = parseInt(req.body.gameId, 10);
 
     if (Number.isNaN(userId) || Number.isNaN(gameId)) {
       return res.status(400).json({ error: "Invalid user id or game id" });
+    }
+
+    const userExists = await pool.query(
+      "SELECT 1 FROM user_account WHERE user_id = $1 LIMIT 1",
+      [userId]
+    );
+
+    if (userExists.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
     }
 
     const gameExists = await pool.query(
@@ -715,23 +703,30 @@ app.post("/wishlist/:userId", async (req, res) => {
       return res.status(404).json({ error: "Game not found" });
     }
 
-    await pool.query(
+    const inserted = await pool.query(
       `
-      INSERT INTO wishlist (user_id, game_id)
-      VALUES ($1, $2)
+      INSERT INTO wishlist (user_id, game_id, added_date)
+      VALUES ($1, $2, NOW())
       ON CONFLICT (user_id, game_id) DO NOTHING
+      RETURNING user_id, game_id, added_date
       `,
       [userId, gameId]
     );
 
-    return res.status(201).json({ ok: true });
+    return res.status(201).json({
+      ok: true,
+      message:
+        inserted.rowCount === 0
+          ? "Game already in wishlist"
+          : "Game added to wishlist"
+    });
   } catch (err) {
     console.error("POST /wishlist/:userId error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.delete("/wishlist/:userId/:gameId", async (req, res) => {
+app.delete("/wishlist/:userId/:gameId", requireAuth, requireSameUser, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
     const gameId = parseInt(req.params.gameId, 10);
@@ -740,12 +735,20 @@ app.delete("/wishlist/:userId/:gameId", async (req, res) => {
       return res.status(400).json({ error: "Invalid user id or game id" });
     }
 
-    await pool.query(
-      "DELETE FROM wishlist WHERE user_id = $1 AND game_id = $2",
+    const deleted = await pool.query(
+      `
+      DELETE FROM wishlist
+      WHERE user_id = $1 AND game_id = $2
+      RETURNING user_id, game_id
+      `,
       [userId, gameId]
     );
 
-    return res.json({ ok: true });
+    if (deleted.rowCount === 0) {
+      return res.status(404).json({ error: "Wishlist item not found" });
+    }
+
+    return res.json({ ok: true, message: "Game removed from wishlist" });
   } catch (err) {
     console.error("DELETE /wishlist/:userId/:gameId error:", err);
     return res.status(500).json({ error: err.message });
@@ -755,7 +758,7 @@ app.delete("/wishlist/:userId/:gameId", async (req, res) => {
    PROFILE
    ========================= */
 
-app.get("/profile/:id", async (req, res) => {
+app.get("/profile/:id", requireAuth, requireSameUser, async (req, res) => {
   try {
     const userId = parseInt(req.params.id, 10);
 
@@ -790,73 +793,31 @@ app.get("/profile/:id", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-app.put("/profile/:id", async (req, res) => {
+
+app.put("/profile/:userId", requireAuth, requireSameUser, async (req, res) => {
   try {
-    const userId = parseInt(req.params.id, 10);
+    const userId = parseInt(req.params.userId, 10);
+    const { username, bio, avatar_style, avatar_seed } = req.body;
 
     if (Number.isNaN(userId)) {
       return res.status(400).json({ error: "Invalid user id" });
     }
 
-    const username = String(req.body.username || "").trim();
-    const bio = String(req.body.bio || "");
-    const avatarStyle = String(req.body.avatar_style || "").trim();
-    const avatarSeed = String(req.body.avatar_seed || "").trim();
+    const cleanUsername = String(username || "").trim();
+    const cleanBio = String(bio || "");
+    const cleanAvatarStyle = String(avatar_style || "adventurer").trim() || "adventurer";
+    const cleanAvatarSeed = String(avatar_seed || cleanUsername).trim() || cleanUsername;
 
-    const allowedAvatarStyles = [
-      "adventurer",
-      "adventurer-neutral",
-      "avataaars",
-      "big-smile",
-      "bottts",
-      "fun-emoji",
-      "icons",
-      "lorelei",
-      "micah",
-      "shapes",
-    ];
-
-    if (!username) {
+    if (!cleanUsername) {
       return res.status(400).json({ error: "Username is required" });
     }
 
-    if (username.length < 3) {
+    if (cleanUsername.length < 3) {
       return res.status(400).json({ error: "Username must be at least 3 characters" });
     }
 
-    if (username.length > 40) {
-      return res.status(400).json({ error: "Username must be at most 40 characters" });
-    }
-
-    if (bio.length > 300) {
+    if (cleanBio.length > 300) {
       return res.status(400).json({ error: "Bio must be at most 300 characters" });
-    }
-
-    if (avatarStyle && !allowedAvatarStyles.includes(avatarStyle)) {
-      return res.status(400).json({ error: "Invalid avatar style" });
-    }
-
-    const existingUser = await pool.query(
-      "SELECT user_id FROM user_account WHERE user_id = $1 LIMIT 1",
-      [userId]
-    );
-
-    if (existingUser.rowCount === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const duplicateName = await pool.query(
-      `
-      SELECT user_id
-      FROM user_account
-      WHERE LOWER(username) = LOWER($1) AND user_id <> $2
-      LIMIT 1
-      `,
-      [username, userId]
-    );
-
-    if (duplicateName.rowCount > 0) {
-      return res.status(409).json({ error: "Username is already taken" });
     }
 
     const updated = await pool.query(
@@ -877,31 +838,27 @@ app.put("/profile/:id", async (req, res) => {
         COALESCE(avatar_seed, username) AS avatar_seed,
         COALESCE(bio, '') AS bio
       `,
-      [
-        username,
-        bio,
-        avatarStyle || "adventurer",
-        avatarSeed || username,
-        userId,
-      ]
+      [cleanUsername, cleanBio, cleanAvatarStyle, cleanAvatarSeed, userId]
     );
+
+    if (updated.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
 
     return res.json({
       ok: true,
-      message: "Profile updated successfully",
       user: updated.rows[0],
     });
   } catch (err) {
-    console.error("PUT /profile/:id error:", err);
+    console.error("PUT /profile/:userId error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.put("/profile/:id/password", async (req, res) => {
+app.put("/profile/:userId/password", requireAuth, requireSameUser, async (req, res) => {
   try {
-    const userId = parseInt(req.params.id, 10);
-    const currentPassword = String(req.body.currentPassword || "");
-    const newPassword = String(req.body.newPassword || "");
+    const userId = parseInt(req.params.userId, 10);
+    const { currentPassword, newPassword } = req.body;
 
     if (Number.isNaN(userId)) {
       return res.status(400).json({ error: "Invalid user id" });
@@ -911,11 +868,11 @@ app.put("/profile/:id/password", async (req, res) => {
       return res.status(400).json({ error: "Current password and new password are required" });
     }
 
-    if (newPassword.length < 6) {
+    if (String(newPassword).length < 6) {
       return res.status(400).json({ error: "New password must be at least 6 characters" });
     }
 
-    const result = await pool.query(
+    const found = await pool.query(
       `
       SELECT user_id, password_hash
       FROM user_account
@@ -925,18 +882,18 @@ app.put("/profile/:id/password", async (req, res) => {
       [userId]
     );
 
-    if (result.rowCount === 0) {
+    if (found.rowCount === 0) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const user = result.rows[0];
-    const match = await bcrypt.compare(currentPassword, user.password_hash || "");
+    const user = found.rows[0];
+    const ok = await bcrypt.compare(currentPassword, user.password_hash || "");
 
-    if (!match) {
+    if (!ok) {
       return res.status(401).json({ error: "Current password is incorrect" });
     }
 
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const nextHash = await bcrypt.hash(newPassword, 10);
 
     await pool.query(
       `
@@ -944,7 +901,7 @@ app.put("/profile/:id/password", async (req, res) => {
       SET password_hash = $1
       WHERE user_id = $2
       `,
-      [newHash, userId]
+      [nextHash, userId]
     );
 
     return res.json({
@@ -952,187 +909,11 @@ app.put("/profile/:id/password", async (req, res) => {
       message: "Password updated successfully",
     });
   } catch (err) {
-    console.error("PUT /profile/:id/password error:", err);
+    console.error("PUT /profile/:userId/password error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.put("/profile/:id", async (req, res) => {
-  try {
-    const userId = parseInt(req.params.id, 10);
-
-    if (Number.isNaN(userId)) {
-      return res.status(400).json({ error: "Invalid user id" });
-    }
-
-    const username = String(req.body.username || "").trim();
-    const bio = String(req.body.bio || "").trim();
-    const avatarStyle = String(req.body.avatar_style || "").trim();
-    const avatarSeed = String(req.body.avatar_seed || "").trim();
-
-    const allowedAvatarStyles = [
-      "adventurer",
-      "adventurer-neutral",
-      "avataaars",
-      "big-smile",
-      "bottts",
-      "fun-emoji",
-      "icons",
-      "lorelei",
-      "micah",
-      "shapes",
-    ];
-
-    if (!username) {
-      return res.status(400).json({ error: "Username is required" });
-    }
-
-    if (username.length < 3) {
-      return res
-        .status(400)
-        .json({ error: "Username must be at least 3 characters" });
-    }
-
-    if (username.length > 40) {
-      return res
-        .status(400)
-        .json({ error: "Username must be at most 40 characters" });
-    }
-
-    if (bio.length > 300) {
-      return res
-        .status(400)
-        .json({ error: "Bio must be at most 300 characters" });
-    }
-
-    if (avatarStyle && !allowedAvatarStyles.includes(avatarStyle)) {
-      return res.status(400).json({ error: "Invalid avatar style" });
-    }
-
-    const existingUser = await pool.query(
-      "SELECT user_id FROM user_account WHERE user_id = $1 LIMIT 1",
-      [userId]
-    );
-
-    if (existingUser.rowCount === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const duplicateName = await pool.query(
-      `
-      SELECT user_id
-      FROM user_account
-      WHERE LOWER(username) = LOWER($1) AND user_id <> $2
-      LIMIT 1
-      `,
-      [username, userId]
-    );
-
-    if (duplicateName.rowCount > 0) {
-      return res.status(409).json({ error: "Username is already taken" });
-    }
-
-    const updated = await pool.query(
-      `
-      UPDATE user_account
-      SET
-        username = $1,
-        bio = $2,
-        avatar_style = $3,
-        avatar_seed = $4
-      WHERE user_id = $5
-      RETURNING
-        user_id AS id,
-        username AS name,
-        email,
-        join_date,
-        COALESCE(avatar_style, 'adventurer') AS avatar_style,
-        COALESCE(avatar_seed, username) AS avatar_seed,
-        COALESCE(bio, '') AS bio
-      `,
-      [
-        username,
-        bio,
-        avatarStyle || "adventurer",
-        avatarSeed || username,
-        userId,
-      ]
-    );
-
-    return res.json({
-      ok: true,
-      message: "Profile updated successfully",
-      user: updated.rows[0],
-    });
-  } catch (err) {
-    console.error("PUT /profile/:id error:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-app.put("/profile/:id/password", async (req, res) => {
-  try {
-    const userId = parseInt(req.params.id, 10);
-    const currentPassword = String(req.body.currentPassword || "");
-    const newPassword = String(req.body.newPassword || "");
-
-    if (Number.isNaN(userId)) {
-      return res.status(400).json({ error: "Invalid user id" });
-    }
-
-    if (!currentPassword || !newPassword) {
-      return res
-        .status(400)
-        .json({ error: "Current password and new password are required" });
-    }
-
-    if (newPassword.length < 6) {
-      return res
-        .status(400)
-        .json({ error: "New password must be at least 6 characters" });
-    }
-
-    const result = await pool.query(
-      `
-      SELECT user_id, password_hash
-      FROM user_account
-      WHERE user_id = $1
-      LIMIT 1
-      `,
-      [userId]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const user = result.rows[0];
-    const match = await bcrypt.compare(currentPassword, user.password_hash || "");
-
-    if (!match) {
-      return res.status(401).json({ error: "Current password is incorrect" });
-    }
-
-    const newHash = await bcrypt.hash(newPassword, 10);
-
-    await pool.query(
-      `
-      UPDATE user_account
-      SET password_hash = $1
-      WHERE user_id = $2
-      `,
-      [newHash, userId]
-    );
-
-    return res.json({
-      ok: true,
-      message: "Password updated successfully",
-    });
-  } catch (err) {
-    console.error("PUT /profile/:id/password error:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
 /* =========================
    SHOP
    ========================= */
@@ -1194,16 +975,27 @@ app.get("/shop", async (req, res) => {
   }
 });
 
+
+
 /* =========================
    CART
    ========================= */
 
-app.get("/cart/:userId", async (req, res) => {
+app.get("/cart/:userId", requireAuth, requireSameUser, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
 
     if (Number.isNaN(userId)) {
       return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const userExists = await pool.query(
+      "SELECT 1 FROM user_account WHERE user_id = $1 LIMIT 1",
+      [userId]
+    );
+
+    if (userExists.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
     }
 
     const result = await pool.query(
@@ -1256,21 +1048,14 @@ app.get("/cart/:userId", async (req, res) => {
   }
 });
 
-app.post("/cart/:userId", async (req, res) => {
+app.post("/cart/:userId", requireAuth, requireSameUser, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
     const listingId = parseInt(req.body.listingId, 10);
     const quantity = parseInt(req.body.quantity || 1, 10);
 
-    if (
-      Number.isNaN(userId) ||
-      Number.isNaN(listingId) ||
-      Number.isNaN(quantity) ||
-      quantity < 1
-    ) {
-      return res
-        .status(400)
-        .json({ error: "Invalid user id, listing id, or quantity" });
+    if (Number.isNaN(userId) || Number.isNaN(listingId) || Number.isNaN(quantity) || quantity < 1) {
+      return res.status(400).json({ error: "Invalid user id, listing id, or quantity" });
     }
 
     const userExists = await pool.query(
@@ -1310,16 +1095,14 @@ app.post("/cart/:userId", async (req, res) => {
   }
 });
 
-app.patch("/cart/:userId/:listingId", async (req, res) => {
+app.patch("/cart/:userId/:listingId", requireAuth, requireSameUser, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
     const listingId = parseInt(req.params.listingId, 10);
     const quantity = parseInt(req.body.quantity, 10);
 
     if (Number.isNaN(userId) || Number.isNaN(listingId) || Number.isNaN(quantity)) {
-      return res
-        .status(400)
-        .json({ error: "Invalid user id, listing id, or quantity" });
+      return res.status(400).json({ error: "Invalid user id, listing id, or quantity" });
     }
 
     const cartResult = await pool.query(
@@ -1362,7 +1145,7 @@ app.patch("/cart/:userId/:listingId", async (req, res) => {
   }
 });
 
-app.delete("/cart/:userId/:listingId", async (req, res) => {
+app.delete("/cart/:userId/:listingId", requireAuth, requireSameUser, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
     const listingId = parseInt(req.params.listingId, 10);
@@ -1396,12 +1179,79 @@ app.delete("/cart/:userId/:listingId", async (req, res) => {
    CHECKOUT / ORDERS
    ========================= */
 
-app.post("/checkout/:userId", async (req, res) => {
+async function buildSingleOrder(orderId, userId) {
+  const orderResult = await pool.query(
+    `
+    SELECT
+      o.order_id,
+      o.user_id,
+      o.total_amount,
+      o.total_items,
+      o.currency,
+      o.payment_method,
+      o.customer_name,
+      o.customer_email,
+      o.billing_address,
+      o.order_status,
+      o.created_at
+    FROM customer_order o
+    WHERE o.order_id = $1 AND o.user_id = $2
+    LIMIT 1
+    `,
+    [orderId, userId]
+  );
+
+  if (orderResult.rowCount === 0) {
+    return null;
+  }
+
+  const itemsResult = await pool.query(
+    `
+    SELECT
+      oi.order_item_id,
+      oi.order_id,
+      oi.listing_id,
+      oi.game_id,
+      oi.quantity,
+      oi.unit_price,
+      oi.subtotal,
+      g.title,
+      g.cover_url AS cover,
+      s.name AS store_name
+    FROM order_item oi
+    JOIN game g ON oi.game_id = g.game_id
+    LEFT JOIN game_store_listing gsl ON oi.listing_id = gsl.listing_id
+    LEFT JOIN store s ON gsl.store_id = s.store_id
+    WHERE oi.order_id = $1
+    ORDER BY oi.order_item_id ASC
+    `,
+    [orderId]
+  );
+
+  return {
+    ...orderResult.rows[0],
+    total_amount: Number(orderResult.rows[0].total_amount || 0),
+    total_items: Number(orderResult.rows[0].total_items || 0),
+    items: itemsResult.rows.map((row) => ({
+      ...row,
+      quantity: Number(row.quantity || 0),
+      unit_price: Number(row.unit_price || 0),
+      subtotal: Number(row.subtotal || 0),
+    })),
+  };
+}
+
+app.post("/checkout/:userId", requireAuth, requireSameUser, async (req, res) => {
   const client = await pool.connect();
 
   try {
     const userId = parseInt(req.params.userId, 10);
-    const { customerName, customerEmail, billingAddress, paymentMethod } = req.body || {};
+    const {
+      customerName,
+      customerEmail,
+      billingAddress,
+      paymentMethod,
+    } = req.body || {};
 
     if (Number.isNaN(userId)) {
       return res.status(400).json({ error: "Invalid user id" });
@@ -1414,12 +1264,15 @@ app.post("/checkout/:userId", async (req, res) => {
       });
     }
 
+    await client.query("BEGIN");
+
     const userExists = await client.query(
       "SELECT 1 FROM user_account WHERE user_id = $1 LIMIT 1",
       [userId]
     );
 
     if (userExists.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "User not found" });
     }
 
@@ -1449,14 +1302,21 @@ app.post("/checkout/:userId", async (req, res) => {
     }));
 
     if (cartItems.length === 0) {
+      await client.query("ROLLBACK");
       return res.status(400).json({ error: "Cart is empty" });
     }
 
-    const totalAmount = cartItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
-    const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-    const currency = cartItems[0].currency || "USD";
+    const totalAmount = cartItems.reduce(
+      (sum, item) => sum + item.quantity * item.price,
+      0
+    );
 
-    await client.query("BEGIN");
+    const totalItems = cartItems.reduce(
+      (sum, item) => sum + item.quantity,
+      0
+    );
+
+    const currency = cartItems[0].currency || "USD";
 
     const orderInsert = await client.query(
       `
@@ -1504,20 +1364,28 @@ app.post("/checkout/:userId", async (req, res) => {
         )
         VALUES ($1, $2, $3, $4, $5, $6)
         `,
-        [orderId, item.listing_id, item.game_id, item.quantity, item.price, subtotal]
+        [
+          orderId,
+          item.listing_id,
+          item.game_id,
+          item.quantity,
+          item.price,
+          subtotal,
+        ]
       );
     }
 
-    const cartIdResult = await client.query(
-      "SELECT cart_id FROM cart WHERE user_id = $1 ORDER BY cart_id ASC LIMIT 1",
+    await client.query(
+      `
+      DELETE FROM cart_item
+      WHERE cart_id IN (
+        SELECT cart_id
+        FROM cart
+        WHERE user_id = $1
+      )
+      `,
       [userId]
     );
-
-    if (cartIdResult.rowCount > 0) {
-      await client.query("DELETE FROM cart_item WHERE cart_id = $1", [
-        cartIdResult.rows[0].cart_id,
-      ]);
-    }
 
     await client.query("COMMIT");
 
@@ -1528,7 +1396,10 @@ app.post("/checkout/:userId", async (req, res) => {
       order,
     });
   } catch (err) {
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) {}
+
     console.error("POST /checkout/:userId error:", err);
     return res.status(500).json({ error: err.message });
   } finally {
@@ -1536,12 +1407,21 @@ app.post("/checkout/:userId", async (req, res) => {
   }
 });
 
-app.get("/orders/:userId", async (req, res) => {
+app.get("/orders/:userId", requireAuth, requireSameUser, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
 
     if (Number.isNaN(userId)) {
       return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const userExists = await pool.query(
+      "SELECT 1 FROM user_account WHERE user_id = $1 LIMIT 1",
+      [userId]
+    );
+
+    if (userExists.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
     }
 
     const ordersResult = await pool.query(
@@ -1611,7 +1491,7 @@ app.get("/orders/:userId", async (req, res) => {
   }
 });
 
-app.get("/orders/:userId/:orderId", async (req, res) => {
+app.get("/orders/:userId/:orderId", requireAuth, requireSameUser, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
     const orderId = parseInt(req.params.orderId, 10);
@@ -1632,5 +1512,4 @@ app.get("/orders/:userId/:orderId", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-
 module.exports = app;

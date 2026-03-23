@@ -1,6 +1,12 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser, setStoredUser } from "../utils/auth";
+import {
+  AUTH_EVENT,
+  WISHLIST_EVENT,
+  getStoredUser,
+  setStoredUser,
+  authHeader,
+} from "../utils/auth";
 import { fetchWishlistGames } from "../utils/wishlist";
 import { fetchCart } from "../utils/cart";
 import { fetchOrders } from "../utils/orders";
@@ -20,7 +26,7 @@ function formatJoinDate(value) {
 }
 
 export default function Profile() {
-  const API_BASE = "http://localhost:3000";
+  const API_BASE = "http://localhost:4000";
 
   const [user, setUser] = useState(() => getStoredUser());
   const [wishlistCount, setWishlistCount] = useState(0);
@@ -47,7 +53,11 @@ export default function Profile() {
 
       try {
         const [profileResult, wishlistResult, cartResult, ordersResult] = await Promise.allSettled([
-          fetch(`${API_BASE}/profile/${stored.id}`),
+          fetch(`${API_BASE}/profile/${stored.id}`, {
+            headers: {
+              ...authHeader(),
+            },
+          }),
           fetchWishlistGames(stored.id),
           fetchCart(stored.id),
           fetchOrders(stored.id),

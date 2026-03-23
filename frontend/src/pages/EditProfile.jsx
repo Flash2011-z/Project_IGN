@@ -1,9 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
-import { getStoredUser, setStoredUser } from "../utils/auth";
+import { getStoredUser, setStoredUser, authHeader } from "../utils/auth";
 import { getAvatarUrl } from "../utils/avatar";
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = "http://localhost:4000";
 
 const AVATAR_STYLES = [
   "adventurer",
@@ -46,7 +46,11 @@ export default function EditProfile() {
 
     async function loadProfile() {
       try {
-        const res = await fetch(`${API_BASE}/profile/${stored.id}`);
+        const res = await fetch(`${API_BASE}/profile/${stored.id}`, {
+          headers: {
+            ...authHeader(),
+          },
+        });
         const data = await res.json();
 
         if (!res.ok) return;
@@ -109,7 +113,10 @@ export default function EditProfile() {
 
       const res = await fetch(`${API_BASE}/profile/${user.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader(),
+        },
         body: JSON.stringify({
           username: cleanUsername,
           bio: cleanBio,
@@ -167,7 +174,10 @@ export default function EditProfile() {
 
       const res = await fetch(`${API_BASE}/profile/${user.id}/password`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader(),
+        },
         body: JSON.stringify({
           currentPassword,
           newPassword,
