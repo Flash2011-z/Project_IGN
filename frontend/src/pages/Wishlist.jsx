@@ -26,6 +26,10 @@ const PLACEHOLDER =
 function GameCover({ src, alt }) {
   const [imgSrc, setImgSrc] = useState(src || PLACEHOLDER);
 
+  useEffect(() => {
+    setImgSrc(src || PLACEHOLDER);
+  }, [src]);
+
   return (
     <div className="coverWrap">
       <img
@@ -46,30 +50,30 @@ export default function Wishlist() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function loadWishlist(nextUser = getStoredUser()) {
-      setUser(nextUser);
+  async function loadWishlist(nextUser = getStoredUser()) {
+    setUser(nextUser);
 
-      if (!nextUser?.id) {
-        setWishedGames([]);
-        setLoading(false);
-        setError("");
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError("");
-        const games = await fetchWishlistGames(nextUser.id);
-        setWishedGames(games);
-      } catch (err) {
-        setError(err.message || "Failed to load wishlist.");
-        setWishedGames([]);
-      } finally {
-        setLoading(false);
-      }
+    if (!nextUser?.id) {
+      setWishedGames([]);
+      setLoading(false);
+      setError("");
+      return;
     }
 
+    try {
+      setLoading(true);
+      setError("");
+      const games = await fetchWishlistGames(nextUser.id);
+      setWishedGames(Array.isArray(games) ? games : []);
+    } catch (err) {
+      setError(err.message || "Failed to load wishlist.");
+      setWishedGames([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
     loadWishlist();
 
     function handleRefresh() {
@@ -77,11 +81,13 @@ export default function Wishlist() {
     }
 
     window.addEventListener("focus", handleRefresh);
+    window.addEventListener("storage", handleRefresh);
     window.addEventListener(AUTH_EVENT, handleRefresh);
     window.addEventListener(WISHLIST_EVENT, handleRefresh);
 
     return () => {
       window.removeEventListener("focus", handleRefresh);
+      window.removeEventListener("storage", handleRefresh);
       window.removeEventListener(AUTH_EVENT, handleRefresh);
       window.removeEventListener(WISHLIST_EVENT, handleRefresh);
     };
@@ -90,19 +96,20 @@ export default function Wishlist() {
   async function handleRemove(gameId) {
     if (!user?.id) return;
 
-    const prev = wishedGames;
-    const next = prev.filter((g) => g.id !== gameId);
+    const previous = wishedGames;
+    const next = previous.filter((g) => g.id !== gameId);
     setWishedGames(next);
 
     try {
+      setError("");
       await removeWishlistGame(user.id, gameId);
     } catch (err) {
-      setWishedGames(prev);
+      setWishedGames(previous);
       setError(err.message || "Failed to remove from wishlist.");
     }
   }
 
-  if (!user) {
+  if (!user?.id) {
     return (
       <div className="container" style={{ paddingBottom: 28 }}>
         <section className="pageHero" style={{ marginTop: 12 }}>

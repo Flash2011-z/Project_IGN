@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { getStoredUser } from "../utils/auth";
 import { addCartItem } from "../utils/cart";
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = "http://localhost:4000";
 
 const PLACEHOLDER =
   "data:image/svg+xml;utf8," +

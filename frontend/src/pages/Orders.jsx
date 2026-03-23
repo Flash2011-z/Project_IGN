@@ -62,7 +62,7 @@ export default function Orders() {
     };
   }, [orders]);
 
-  if (!user) {
+  if (!user?.id) {
     return (
       <div className="container" style={{ paddingBottom: 28 }}>
         <section className="pageHero" style={{ marginTop: 12 }}>

@@ -1,6 +1,6 @@
-import { WISHLIST_EVENT } from "./auth";
+import { WISHLIST_EVENT, authHeader } from "./auth";
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = "http://localhost:4000";
 
 function emitWishlistChanged() {
   if (typeof window !== "undefined") {
@@ -10,6 +10,7 @@ function emitWishlistChanged() {
 
 async function readJson(res) {
   let data = {};
+
   try {
     data = await res.json();
   } catch {
@@ -24,34 +25,80 @@ async function readJson(res) {
 }
 
 export async function fetchWishlistGames(userId) {
-  if (!userId) return [];
+  const normalizedUserId = Number(userId);
 
-  const res = await fetch(`${API_BASE}/wishlist/${userId}`);
+  if (!normalizedUserId || Number.isNaN(normalizedUserId)) {
+    return [];
+  }
+
+  const res = await fetch(`${API_BASE}/wishlist/${normalizedUserId}`, {
+    headers: {
+      ...authHeader(),
+    },
+  });
+
   const data = await readJson(res);
   return Array.isArray(data) ? data : [];
 }
 
 export async function fetchWishlistIds(userId) {
   const games = await fetchWishlistGames(userId);
-  return games.map((g) => g.id);
+  return games
+    .map((g) => Number(g?.id))
+    .filter((id) => !Number.isNaN(id));
 }
 
 export async function addWishlistGame(userId, gameId) {
-  const res = await fetch(`${API_BASE}/wishlist/${userId}`, {
+  const normalizedUserId = Number(userId);
+  const normalizedGameId = Number(gameId);
+
+  if (
+    !normalizedUserId ||
+    Number.isNaN(normalizedUserId) ||
+    !normalizedGameId ||
+    Number.isNaN(normalizedGameId)
+  ) {
+    throw new Error("Valid user id and game id are required.");
+  }
+
+  const res = await fetch(`${API_BASE}/wishlist/${normalizedUserId}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ gameId }),
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader(),
+    },
+    body: JSON.stringify({ gameId: normalizedGameId }),
   });
 
-  await readJson(res);
+  const data = await readJson(res);
   emitWishlistChanged();
+  return data;
 }
 
 export async function removeWishlistGame(userId, gameId) {
-  const res = await fetch(`${API_BASE}/wishlist/${userId}/${gameId}`, {
-    method: "DELETE",
-  });
+  const normalizedUserId = Number(userId);
+  const normalizedGameId = Number(gameId);
 
-  await readJson(res);
+  if (
+    !normalizedUserId ||
+    Number.isNaN(normalizedUserId) ||
+    !normalizedGameId ||
+    Number.isNaN(normalizedGameId)
+  ) {
+    throw new Error("Valid user id and game id are required.");
+  }
+
+  const res = await fetch(
+    `${API_BASE}/wishlist/${normalizedUserId}/${normalizedGameId}`,
+    {
+      method: "DELETE",
+      headers: {
+        ...authHeader(),
+      },
+    }
+  );
+
+  const data = await readJson(res);
   emitWishlistChanged();
+  return data;
 }

@@ -1,10 +1,10 @@
 import { Link, useParams } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
-import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser } from "../utils/auth";
+import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser, authHeader } from "../utils/auth";
 import { addWishlistGame, fetchWishlistIds, removeWishlistGame } from "../utils/wishlist";
 import { addCartItem } from "../utils/cart";
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = "http://localhost:4000";
 
 const PLACEHOLDER =
   "data:image/svg+xml;utf8," +
@@ -310,6 +310,7 @@ export default function GameDetails() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...authHeader(),
         },
         body: JSON.stringify({
           userId: user.id,

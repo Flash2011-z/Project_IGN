@@ -33,16 +33,34 @@ export default function Checkout() {
   useEffect(() => {
     async function loadCart() {
       if (!user?.id) {
+        setCart({
+          items: [],
+          total: 0,
+          itemCount: 0,
+          uniqueCount: 0,
+        });
         setLoading(false);
         return;
       }
 
       try {
         setError("");
+        setLoading(true);
         const data = await fetchCart(user.id);
-        setCart(data);
+        setCart({
+          items: Array.isArray(data?.items) ? data.items : [],
+          total: Number(data?.total || 0),
+          itemCount: Number(data?.itemCount || 0),
+          uniqueCount: Number(data?.uniqueCount || 0),
+        });
       } catch (err) {
         setError(err.message || "Failed to load cart.");
+        setCart({
+          items: [],
+          total: 0,
+          itemCount: 0,
+          uniqueCount: 0,
+        });
       } finally {
         setLoading(false);
       }
@@ -52,12 +70,9 @@ export default function Checkout() {
   }, [user?.id]);
 
   const subtotal = useMemo(() => Number(cart.total || 0), [cart.total]);
-  const serviceFee = useMemo(() => (subtotal > 0 ? 2.99 : 0), [subtotal]);
-  const tax = useMemo(() => Number((subtotal * 0.08).toFixed(2)), [subtotal]);
-  const grandTotal = useMemo(
-    () => Number((subtotal + tax + serviceFee).toFixed(2)),
-    [subtotal, tax, serviceFee]
-  );
+  const tax = 0;
+  const serviceFee = 0;
+  const grandTotal = subtotal;
 
   function updateField(key, value) {
     setForm((prev) => ({
@@ -67,25 +82,36 @@ export default function Checkout() {
   }
 
   async function handleSubmit(e) {
-    e.preventDefault();
+    if (e?.preventDefault) e.preventDefault();
 
     if (!user?.id) {
       alert("Please login first.");
       return;
     }
 
-    if (!form.customerName.trim()) return alert("Enter your full name.");
-    if (!form.customerEmail.trim()) return alert("Enter your email.");
-    if (!form.billingAddress.trim()) return alert("Enter your billing address.");
+    if (!form.customerName.trim()) {
+      alert("Enter your full name.");
+      return;
+    }
+
+    if (!form.customerEmail.trim()) {
+      alert("Enter your email.");
+      return;
+    }
+
+    if (!form.billingAddress.trim()) {
+      alert("Enter your billing address.");
+      return;
+    }
 
     try {
       setSubmitting(true);
       setError("");
 
       const result = await submitCheckout(user.id, {
-        customerName: form.customerName,
-        customerEmail: form.customerEmail,
-        billingAddress: form.billingAddress,
+        customerName: form.customerName.trim(),
+        customerEmail: form.customerEmail.trim(),
+        billingAddress: form.billingAddress.trim(),
         paymentMethod: form.paymentMethod,
       });
 
@@ -97,7 +123,7 @@ export default function Checkout() {
     }
   }
 
-  if (!user) {
+  if (!user?.id) {
     return (
       <div className="container" style={{ paddingBottom: 28 }}>
         <section className="pageHero" style={{ marginTop: 12 }}>
@@ -265,30 +291,6 @@ export default function Checkout() {
                   <option>PayPal</option>
                   <option>Cash on Delivery</option>
                 </select>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: 12,
-                  marginTop: 4,
-                }}
-              >
-                <div className="glass" style={{ padding: 12 }}>
-                  <div className="muted" style={{ fontWeight: 900 }}>Instant Access</div>
-                  <div style={{ fontWeight: 900, marginTop: 4 }}>Digital order confirmation</div>
-                </div>
-
-                <div className="glass" style={{ padding: 12 }}>
-                  <div className="muted" style={{ fontWeight: 900 }}>Protected Payment</div>
-                  <div style={{ fontWeight: 900, marginTop: 4 }}>Trusted checkout flow</div>
-                </div>
-
-                <div className="glass" style={{ padding: 12 }}>
-                  <div className="muted" style={{ fontWeight: 900 }}>Order History</div>
-                  <div style={{ fontWeight: 900, marginTop: 4 }}>Saved to your account</div>
-                </div>
               </div>
 
               <button type="submit" className="btn primary" disabled={submitting} style={{ marginTop: 6 }}>

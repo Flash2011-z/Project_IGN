@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { getStoredUser, setStoredUser } from "../utils/auth";
+import { getStoredUser, isAuthenticated, setStoredAuth } from "../utils/auth";
 
 function GoogleIcon() {
   return (
@@ -26,7 +26,7 @@ function DiscordIcon() {
 
 export default function Login() {
   const navigate = useNavigate();
-  const API_BASE = "http://localhost:3000";
+  const API_BASE = "http://localhost:4000";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,7 +34,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (getStoredUser()) {
+    if (isAuthenticated() && getStoredUser()?.id) {
       navigate("/profile", { replace: true });
     }
   }, [navigate]);
@@ -64,10 +64,14 @@ export default function Login() {
         return;
       }
 
-      setStoredUser(data.user || {});
+      setStoredAuth({
+        user: data.user || {},
+        token: data.token || "",
+      });
+
       navigate("/profile", { replace: true });
     } catch {
-      setError("Backend not reachable. Is it running on port 3000?");
+      setError("Backend not reachable. Is it running on port 4000?");
     } finally {
       setLoading(false);
     }

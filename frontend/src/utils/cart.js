@@ -1,6 +1,6 @@
-import { CART_EVENT } from "./auth";
+import { CART_EVENT, authHeader } from "./auth";
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = "http://localhost:4000";
 
 function emitCartChanged() {
   if (typeof window !== "undefined") {
@@ -24,7 +24,9 @@ async function readJson(res) {
 }
 
 export async function fetchCart(userId) {
-  if (!userId) {
+  const normalizedUserId = Number(userId);
+
+  if (!normalizedUserId || Number.isNaN(normalizedUserId)) {
     return {
       items: [],
       total: 0,
@@ -33,15 +35,42 @@ export async function fetchCart(userId) {
     };
   }
 
-  const res = await fetch(`${API_BASE}/cart/${userId}`);
+  const res = await fetch(`${API_BASE}/cart/${normalizedUserId}`, {
+    headers: {
+      ...authHeader(),
+    },
+  });
+
   return readJson(res);
 }
 
 export async function addCartItem(userId, listingId, quantity = 1) {
-  const res = await fetch(`${API_BASE}/cart/${userId}`, {
+  const normalizedUserId = Number(userId);
+  const normalizedListingId = Number(listingId);
+  const normalizedQuantity = Number(quantity);
+
+  if (
+    !normalizedUserId ||
+    Number.isNaN(normalizedUserId) ||
+    !normalizedListingId ||
+    Number.isNaN(normalizedListingId) ||
+    !normalizedQuantity ||
+    Number.isNaN(normalizedQuantity) ||
+    normalizedQuantity < 1
+  ) {
+    throw new Error("Valid user id, listing id, and quantity are required.");
+  }
+
+  const res = await fetch(`${API_BASE}/cart/${normalizedUserId}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ listingId, quantity }),
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader(),
+    },
+    body: JSON.stringify({
+      listingId: normalizedListingId,
+      quantity: normalizedQuantity,
+    }),
   });
 
   const data = await readJson(res);
@@ -50,11 +79,31 @@ export async function addCartItem(userId, listingId, quantity = 1) {
 }
 
 export async function updateCartItem(userId, listingId, quantity) {
-  const res = await fetch(`${API_BASE}/cart/${userId}/${listingId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ quantity }),
-  });
+  const normalizedUserId = Number(userId);
+  const normalizedListingId = Number(listingId);
+  const normalizedQuantity = Number(quantity);
+
+  if (
+    !normalizedUserId ||
+    Number.isNaN(normalizedUserId) ||
+    !normalizedListingId ||
+    Number.isNaN(normalizedListingId) ||
+    Number.isNaN(normalizedQuantity)
+  ) {
+    throw new Error("Valid user id, listing id, and quantity are required.");
+  }
+
+  const res = await fetch(
+    `${API_BASE}/cart/${normalizedUserId}/${normalizedListingId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeader(),
+      },
+      body: JSON.stringify({ quantity: normalizedQuantity }),
+    }
+  );
 
   const data = await readJson(res);
   emitCartChanged();
@@ -62,9 +111,27 @@ export async function updateCartItem(userId, listingId, quantity) {
 }
 
 export async function removeCartItem(userId, listingId) {
-  const res = await fetch(`${API_BASE}/cart/${userId}/${listingId}`, {
-    method: "DELETE",
-  });
+  const normalizedUserId = Number(userId);
+  const normalizedListingId = Number(listingId);
+
+  if (
+    !normalizedUserId ||
+    Number.isNaN(normalizedUserId) ||
+    !normalizedListingId ||
+    Number.isNaN(normalizedListingId)
+  ) {
+    throw new Error("Valid user id and listing id are required.");
+  }
+
+  const res = await fetch(
+    `${API_BASE}/cart/${normalizedUserId}/${normalizedListingId}`,
+    {
+      method: "DELETE",
+      headers: {
+        ...authHeader(),
+      },
+    }
+  );
 
   const data = await readJson(res);
   emitCartChanged();

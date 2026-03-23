@@ -1,6 +1,12 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser, setStoredUser } from "../utils/auth";
+import {
+  AUTH_EVENT,
+  WISHLIST_EVENT,
+  getStoredUser,
+  setStoredUser,
+  authHeader,
+} from "../utils/auth";
 import { fetchWishlistGames } from "../utils/wishlist";
 import { fetchCart } from "../utils/cart";
 import { fetchOrders } from "../utils/orders";
@@ -20,7 +26,7 @@ function formatJoinDate(value) {
 }
 
 export default function Profile() {
-  const API_BASE = "http://localhost:3000";
+  const API_BASE = "http://localhost:4000";
 
   const [user, setUser] = useState(() => getStoredUser());
   const [wishlistCount, setWishlistCount] = useState(0);
@@ -47,7 +53,11 @@ export default function Profile() {
 
       try {
         const [profileResult, wishlistResult, cartResult, ordersResult] = await Promise.allSettled([
-          fetch(`${API_BASE}/profile/${stored.id}`),
+          fetch(`${API_BASE}/profile/${stored.id}`, {
+            headers: {
+              ...authHeader(),
+            },
+          }),
           fetchWishlistGames(stored.id),
           fetchCart(stored.id),
           fetchOrders(stored.id),
@@ -229,7 +239,8 @@ export default function Profile() {
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link to="/shop" className="btn primary">Continue Shopping</Link>
+              <Link to="/profile/edit" className="btn primary">Edit your profile</Link>
+              <Link to="/shop" className="btn ghost">Continue Shopping</Link>
               <Link to="/orders" className="btn ghost">View Orders</Link>
             </div>
           </div>
@@ -246,19 +257,25 @@ export default function Profile() {
       >
         <div className="card shadow-hover">
           <div className="kicker">Saved</div>
-          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>{wishlistCount}</h3>
+          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>
+            {loading ? "..." : wishlistCount}
+          </h3>
           <p className="muted" style={{ marginBottom: 0 }}>Wishlist games</p>
         </div>
 
         <div className="card shadow-hover">
           <div className="kicker">Cart</div>
-          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>{cartCount}</h3>
+          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>
+            {loading ? "..." : cartCount}
+          </h3>
           <p className="muted" style={{ marginBottom: 0 }}>Items ready to buy</p>
         </div>
 
         <div className="card shadow-hover">
           <div className="kicker">Orders</div>
-          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>{ordersCount}</h3>
+          <h3 style={{ margin: "6px 0 0", fontWeight: 950, fontSize: 30 }}>
+            {loading ? "..." : ordersCount}
+          </h3>
           <p className="muted" style={{ marginBottom: 0 }}>Completed purchases</p>
         </div>
       </div>
@@ -365,7 +382,7 @@ export default function Profile() {
 
             <div className="glass" style={{ padding: 12 }}>
               <div className="muted" style={{ fontWeight: 900, marginBottom: 6 }}>Avatar Style</div>
-              <div style={{ fontWeight: 900 }}>Generated Premium Avatar</div>
+              <div style={{ fontWeight: 900 }}>{user.avatar_style || "Generated Premium Avatar"}</div>
             </div>
           </div>
         </div>
