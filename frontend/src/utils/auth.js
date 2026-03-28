@@ -38,6 +38,7 @@ export function getStoredUser() {
     id: Number.isNaN(id) ? null : id,
     name: String(obj.name ?? obj.username ?? "").trim(),
     email: String(obj.email ?? "").trim(),
+    role: String(obj.role ?? "user").trim().toLowerCase() === "admin" ? "admin" : "user",
     join_date: obj.join_date ?? null,
     avatar_style: String(obj.avatar_style ?? "adventurer").trim() || "adventurer",
     avatar_seed: String(obj.avatar_seed ?? "").trim(),
@@ -54,6 +55,7 @@ export function setStoredAuth({ user, token }) {
     id: Number.isNaN(normalizedId) ? null : normalizedId,
     name: String(user?.name ?? user?.username ?? "").trim(),
     email: String(user?.email ?? "").trim(),
+    role: String(user?.role ?? "user").trim().toLowerCase() === "admin" ? "admin" : "user",
     join_date: user?.join_date ?? null,
     avatar_style: String(user?.avatar_style ?? "adventurer").trim() || "adventurer",
     avatar_seed: String(user?.avatar_seed ?? user?.name ?? user?.username ?? "").trim(),
@@ -105,6 +107,11 @@ export function isAuthenticated() {
   const token = getStoredToken();
   const user = getStoredUser();
   return !!token && !!user?.id;
+}
+
+export function isAdminUser() {
+  const user = getStoredUser();
+  return !!user?.id && user.role === "admin";
 }
 
 export function getStoredProfile() {

@@ -1,7 +1,5 @@
--- Initial schema for Project_IGN
-CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
-  created_at TIMESTAMP DEFAULT now()
-);
+\i /docker-entrypoint-initdb.d/sql/gamezone_schema.sql
+\i /docker-entrypoint-initdb.d/sql/gamezone_seed.sql
+\i /docker-entrypoint-initdb.d/sql/extra_games.sql
+\i /docker-entrypoint-initdb.d/sql/Description_updated.sql
+\i /docker-entrypoint-initdb.d/sql/order.sql

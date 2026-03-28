@@ -28,7 +28,7 @@ function normalize(s) {
   return String(s || "")
     .toLowerCase()
     .replace(/[\u2013\u2014]/g, "-")
-    .replace(/[^a-z0-9\s\-]/g, " ")
+    .replace(/[^a-z0-9\s-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -163,7 +163,7 @@ export default function Games() {
         const data = await response.json();
         setGamesData(data);
         setLoading(false);
-      } catch (err) {
+      } catch {
         setError("Failed to fetch games");
         setLoading(false);
       }

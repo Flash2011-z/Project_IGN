@@ -561,3 +561,644 @@ select.input option:checked{
   border-radius: 999px;
 }
 
+/* ====================================
+   ADMIN: CINEMATIC DARK PREMIUM LAYER
+   ==================================== */
+
+/* Admin page hero header */
+.adminShell {
+  position: relative;
+}
+
+.adminHero {
+  padding: 24px 20px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background:
+    radial-gradient(1000px 500px at 12% -15%, rgba(255,45,85,0.12), transparent 55%),
+    radial-gradient(900px 450px at 85% 5%, rgba(120,140,255,0.10), transparent 55%),
+    rgba(255,255,255,0.04);
+  backdrop-filter: blur(10px);
+  margin-bottom: 20px;
+}
+
+.adminHeroTop {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.adminHeroKicker {
+  font-weight: 900;
+  font-size: 12px;
+  opacity: 0.65;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.adminHeroTitle {
+  margin: 4px 0 0;
+  font-size: 36px;
+  font-weight: 950;
+  letter-spacing: -0.9px;
+  line-height: 1.1;
+}
+
+.adminHeroBtns {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+/* Admin section containers */
+.adminSection {
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.11);
+  background:
+    radial-gradient(800px 400px at 15% -10%, rgba(255,255,255,0.08), transparent 60%),
+    rgba(255,255,255,0.04);
+  backdrop-filter: blur(8px);
+  margin-bottom: 18px;
+}
+
+.adminSectionTitle {
+  font-size: 16px;
+  font-weight: 950;
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+}
+
+.adminSectionIcon {
+  font-weight: 900;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+/* KPI Strip: cinematic gradient system */
+.adminKpiStrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.adminKpiCard {
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.13);
+  backdrop-filter: blur(8px);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.adminKpiCard::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.adminKpiCard:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255,255,255,0.18);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+}
+
+.adminKpiContent {
+  position: relative;
+  z-index: 1;
+}
+
+.adminKpiValue {
+  font-size: 28px;
+  font-weight: 950;
+  line-height: 1.1;
+  margin-bottom: 8px;
+  color: #fff;
+}
+
+.adminKpiLabel {
+  font-size: 13px;
+  font-weight: 800;
+  opacity: 0.75;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+}
+
+.adminKpiTrend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.adminKpiTrend.positive {
+  color: #38d64a;
+}
+
+.adminKpiTrend.negative {
+  color: #ff6b6b;
+}
+
+.adminKpiTrend.neutral {
+  color: #b8bcc9;
+}
+
+/* KPI color variants */
+.adminKpiCard.accent-pink {
+  background:
+    radial-gradient(350px 180px at 20% 0%, rgba(255,45,85,0.22), transparent 70%),
+    rgba(255,255,255,0.05);
+}
+
+.adminKpiCard.accent-cyan {
+  background:
+    radial-gradient(350px 180px at 80% 10%, rgba(0,194,255,0.20), transparent 65%),
+    rgba(255,255,255,0.05);
+}
+
+.adminKpiCard.accent-purple {
+  background:
+    radial-gradient(350px 180px at 50% 0%, rgba(124,92,255,0.18), transparent 65%),
+    rgba(255,255,255,0.05);
+}
+
+.adminKpiCard.accent-mixed {
+  background:
+    radial-gradient(350px 200px at 10% -5%, rgba(255,45,85,0.16), transparent 55%),
+    radial-gradient(350px 200px at 90% 5%, rgba(0,194,255,0.14), transparent 55%),
+    rgba(255,255,255,0.05);
+}
+
+/* Premium notifications */
+.adminNotification {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 800;
+  font-size: 14px;
+  margin-bottom: 14px;
+  backdrop-filter: blur(6px);
+  animation: slideInDown 0.3s ease;
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.adminNotification.success {
+  background: rgba(56,214,74,0.12);
+  border-color: rgba(56,214,74,0.30);
+  color: #38d64a;
+}
+
+.adminNotification.error {
+  background: rgba(255,107,107,0.12);
+  border-color: rgba(255,107,107,0.30);
+  color: #ff6b6b;
+}
+
+.adminNotification.info {
+  background: rgba(0,194,255,0.12);
+  border-color: rgba(0,194,255,0.30);
+  color: #00c2ff;
+}
+
+.adminNotificationIcon {
+  font-size: 16px;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.adminNotificationClose {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.adminNotificationClose:hover {
+  opacity: 1;
+}
+
+/* Premium data tables */
+.adminTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.adminTableHead {
+  border-bottom: 2px solid rgba(255,255,255,0.18);
+}
+
+.adminTableHead th {
+  padding: 14px 14px;
+  text-align: left;
+  font-weight: 900;
+  color: #fff;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.adminTableBody tr {
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  transition: background 0.12s ease;
+}
+
+.adminTableBody tr:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.adminTable td {
+  padding: 14px;
+  vertical-align: middle;
+}
+
+.adminTableCell {
+  display: table-cell;
+}
+
+.adminTableActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.adminTableActionBtn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.07);
+  color: #fff;
+  font-weight: 800;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.adminTableActionBtn:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.24);
+}
+
+.adminTableActionBtn.danger {
+  color: #ff6b6b;
+  border-color: rgba(255,107,107,0.20);
+  background: rgba(255,107,107,0.08);
+}
+
+.adminTableActionBtn.danger:hover {
+  background: rgba(255,107,107,0.14);
+  border-color: rgba(255,107,107,0.35);
+}
+
+/* Empty state */
+.adminEmptyState {
+  text-align: center;
+  padding: 40px 20px;
+  color: rgba(243,244,248,0.68);
+}
+
+.adminEmptyStateIcon {
+  font-size: 40px;
+  opacity: 0.5;
+  margin-bottom: 12px;
+}
+
+.adminEmptyStateText {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+/* Forms */
+.adminForm {
+  display: grid;
+  gap: 18px;
+}
+
+.adminFormSection {
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+}
+
+.adminFormSectionTitle {
+  font-size: 13px;
+  font-weight: 900;
+  margin: 0 0 14px;
+  opacity: 0.8;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+}
+
+.adminFormGroup {
+  margin-bottom: 14px;
+}
+
+.adminFormGroup:last-child {
+  margin-bottom: 0;
+}
+
+.adminFormLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 850;
+  margin-bottom: 6px;
+  color: #fff;
+}
+
+.adminFormField {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  font-size: 14px;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.adminFormField::placeholder {
+  color: rgba(243,244,248,0.50);
+}
+
+.adminFormField:focus {
+  outline: none;
+  border-color: rgba(255,45,85,0.70);
+  background: rgba(255,255,255,0.10);
+}
+
+.adminFormField textarea {
+  font-family: "Inter", monospace;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.adminFormFieldError {
+  border-color: rgba(255,107,107,0.45) !important;
+  background: rgba(255,107,107,0.08) !important;
+}
+
+.adminFormFieldError::placeholder {
+  color: rgba(255,107,107,0.60);
+}
+
+.adminFormError {
+  font-size: 12px;
+  color: #ff6b6b;
+  margin-top: 4px;
+  font-weight: 800;
+}
+
+.adminFormFieldGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+/* Modal confirm dialog */
+.adminConfirmModal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(2px);
+}
+
+.adminConfirmBox {
+  padding: 28px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background:
+    radial-gradient(600px 300px at 30% -20%, rgba(255,255,255,0.10), transparent 60%),
+    rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 30px 70px rgba(0,0,0,0.55);
+  animation: scaleInCenter 0.25s ease;
+}
+
+@keyframes scaleInCenter {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.adminConfirmTitle {
+  font-size: 20px;
+  font-weight: 950;
+  margin: 0 0 8px;
+  color: #fff;
+}
+
+.adminConfirmText {
+  font-size: 14px;
+  margin: 0 0 20px;
+  color: rgba(243,244,248,0.80);
+  line-height: 1.5;
+}
+
+.adminConfirmActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.adminConfirmBtn {
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 13px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.adminConfirmBtn:hover {
+  background: rgba(255,255,255,0.13);
+  border-color: rgba(255,255,255,0.28);
+}
+
+.adminConfirmBtn.danger {
+  background: #ff2d55;
+  border-color: #ff2d55;
+  color: #0b0c10;
+}
+
+.adminConfirmBtn.danger:hover {
+  background: #ff466b;
+  border-color: #ff466b;
+}
+
+/* Status badges */
+.adminBadge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.08);
+}
+
+.adminBadge.success {
+  background: rgba(56,214,74,0.15);
+  border-color: rgba(56,214,74,0.30);
+  color: #38d64a;
+}
+
+.adminBadge.error {
+  background: rgba(255,107,107,0.15);
+  border-color: rgba(255,107,107,0.30);
+  color: #ff6b6b;
+}
+
+.adminBadge.info {
+  background: rgba(0,194,255,0.15);
+  border-color: rgba(0,194,255,0.30);
+  color: #00c2ff;
+}
+
+/* Loading spinner */
+@keyframes AdminSpinner {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.adminSpinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.20);
+  border-top: 2px solid #ff2d55;
+  border-radius: 50%;
+  animation: AdminSpinner 0.8s linear infinite;
+}
+
+/* Responsive adjustments for admin */
+@media (max-width: 900px) {
+  .adminHeroTitle {
+    font-size: 28px;
+  }
+
+  .adminKpiStrip {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .adminFormFieldGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .adminHero {
+    padding: 18px 14px 14px;
+  }
+
+  .adminSection {
+    padding: 14px;
+  }
+
+  .adminTable {
+    font-size: 13px;
+  }
+
+  .adminTableHead th {
+    padding: 10px;
+  }
+
+  .adminTable td {
+    padding: 10px;
+  }
+
+  .adminTableActions {
+    gap: 6px;
+  }
+
+  .adminTableActionBtn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  .adminKpiValue {
+    font-size: 24px;
+  }
+
+  .adminKpiLabel {
+    font-size: 12px;
+  }
+
+  .adminHeroTitle {
+    font-size: 24px;
+  }
+
+  .adminConfirmBox {
+    padding: 22px;
+    max-width: 320px;
+  }
+
+  .adminConfirmTitle {
+    font-size: 18px;
+  }
+
+  .adminConfirmActions {
+    flex-direction: column;
+  }
+
+  .adminConfirmBtn {
+    width: 100%;
+  }
+}
+

@@ -13,7 +13,6 @@ export default function Home() {
   const [featuredGames, setFeaturedGames] = useState([]);
   const [latestReviews, setLatestReviews] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(() => getStoredUser());
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!getStoredToken() && !!getStoredUser()?.id);
 
   useEffect(() => {
@@ -22,11 +21,9 @@ export default function Home() {
       const storedUser = getStoredUser();
 
       if (token && storedUser?.id) {
-        setUser(storedUser);
         setIsLoggedIn(true);
       } else {
         setIsLoggedIn(false);
-        setUser(null);
       }
     }
 

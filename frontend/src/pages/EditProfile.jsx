@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { getStoredUser, setStoredUser, authHeader } from "../utils/auth";
 import { getAvatarUrl } from "../utils/avatar";
@@ -19,7 +19,6 @@ const AVATAR_STYLES = [
 ];
 
 export default function EditProfile() {
-  const navigate = useNavigate();
   const [user, setUser] = useState(() => getStoredUser());
 
   const [username, setUsername] = useState("");
@@ -63,6 +62,7 @@ export default function EditProfile() {
         setAvatarStyle(nextUser.avatar_style || "adventurer");
         setAvatarSeed(nextUser.avatar_seed || nextUser.name || "");
       } catch {
+        setProfileError("Could not load latest profile.");
       }
     }
 

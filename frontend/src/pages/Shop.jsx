@@ -25,6 +25,72 @@ const PLACEHOLDER =
   </svg>
 `);
 
+function normalizePurchaseUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const blockedHosts = new Set([
+    "example.com",
+    "www.example.com",
+    "example.org",
+    "www.example.org",
+    "example.net",
+    "www.example.net",
+  ]);
+
+  function isBlockedPlaceholderUrl(urlValue) {
+    try {
+      const parsed = new URL(urlValue);
+      const host = String(parsed.hostname || "").toLowerCase();
+
+      if (!host) return true;
+      if (blockedHosts.has(host)) return true;
+      if (host.endsWith(".example.com")) return true;
+      if (host.endsWith(".example.org")) return true;
+      if (host.endsWith(".example.net")) return true;
+
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  // Keep existing absolute http(s) URLs untouched.
+  if (/^https?:\/\//i.test(raw)) {
+    return isBlockedPlaceholderUrl(raw) ? "" : raw;
+  }
+
+  // Only auto-prefix plain host/path style inputs.
+  if (/^[\w.-]+(?:\:[0-9]+)?(?:\/.*)?$/i.test(raw)) {
+    const normalized = `https://${raw}`;
+    return isBlockedPlaceholderUrl(normalized) ? "" : normalized;
+  }
+
+  return "";
+}
+
+function buildFallbackStoreUrl(item) {
+  const storeName = String(item?.store_name || "").toLowerCase();
+  const title = String(item?.title || "").trim();
+  if (!title) return "";
+
+  const encodedTitle = encodeURIComponent(title);
+
+  if (storeName.includes("steam")) {
+    return `https://store.steampowered.com/search/?term=${encodedTitle}`;
+  }
+
+  if (storeName.includes("epic")) {
+    return `https://store.epicgames.com/en-US/browse?q=${encodedTitle}&sortBy=relevancy&sortDir=DESC&count=40`;
+  }
+
+  return "";
+}
+
+function getStoreUrl(item) {
+  return normalizePurchaseUrl(item?.purchase_url) || buildFallbackStoreUrl(item);
+}
+
 function ShopCover({ src, alt }) {
   const [imgSrc, setImgSrc] = useState(src || PLACEHOLDER);
 
@@ -192,85 +258,89 @@ export default function Shop() {
         </div>
       ) : (
         <section className="gamesGrid" style={{ marginTop: 14 }}>
-          {filteredItems.map((item) => (
-            <div
-              key={item.listing_id}
-              className="card shadow-hover gameCard"
-              style={{ padding: 0, overflow: "hidden" }}
-            >
-              <ShopCover src={item.cover} alt={item.title} />
+          {filteredItems.map((item) => {
+            const storeUrl = getStoreUrl(item);
 
-              <div style={{ padding: 14 }}>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 950, letterSpacing: -0.3 }}>
-                    {item.title}
-                  </h3>
+            return (
+              <div
+                key={item.listing_id}
+                className="card shadow-hover gameCard"
+                style={{ padding: 0, overflow: "hidden" }}
+              >
+                <ShopCover src={item.cover} alt={item.title} />
 
-                  <span
-                    style={{
-                      marginLeft: "auto",
-                      fontWeight: 950,
-                      background: item.accent || "#ff2d55",
-                      color: "#0b0c10",
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      minWidth: 54,
-                      textAlign: "center",
-                    }}
-                  >
-                    {item.score ?? "—"}
-                  </span>
-                </div>
+                <div style={{ padding: 14 }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 950, letterSpacing: -0.3 }}>
+                      {item.title}
+                    </h3>
 
-                <p className="muted" style={{ margin: "6px 0 10px" }}>
-                  {item.subtitle || "Featured game"} {item.year ? `• ${item.year}` : ""}
-                </p>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-                  <span className="chip">{item.store_name}</span>
-                  <span className="chip">{item.stock_status || "Unknown"}</span>
-                  {(item.platforms || []).slice(0, 2).map((platform) => (
-                    <span key={platform} className="chip">{platform}</span>
-                  ))}
-                </div>
-
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 26, fontWeight: 950 }}>
-                    {Number(item.price).toFixed(2)} {item.currency}
-                  </div>
-                  <div className="muted" style={{ marginTop: 4 }}>
-                    Publisher: {item.publisher || "Unknown"}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <Link to={`/games/${item.game_id}`} className="btn subtle sm">
-                    View Details
-                  </Link>
-
-                  <button
-                    type="button"
-                    className="btn primary sm"
-                    onClick={() => handleAddToCart(item.listing_id)}
-                    disabled={addingId === item.listing_id}
-                  >
-                    {addingId === item.listing_id ? "Adding..." : "Add to Cart"}
-                  </button>
-
-                  {item.purchase_url ? (
-                    <a
-                      href={item.purchase_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn ghost sm"
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        fontWeight: 950,
+                        background: item.accent || "#ff2d55",
+                        color: "#0b0c10",
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        minWidth: 54,
+                        textAlign: "center",
+                      }}
                     >
-                      Store Link
-                    </a>
-                  ) : null}
+                      {item.score ?? "—"}
+                    </span>
+                  </div>
+
+                  <p className="muted" style={{ margin: "6px 0 10px" }}>
+                    {item.subtitle || "Featured game"} {item.year ? `• ${item.year}` : ""}
+                  </p>
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                    <span className="chip">{item.store_name}</span>
+                    <span className="chip">{item.stock_status || "Unknown"}</span>
+                    {(item.platforms || []).slice(0, 2).map((platform) => (
+                      <span key={platform} className="chip">{platform}</span>
+                    ))}
+                  </div>
+
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 26, fontWeight: 950 }}>
+                      {Number(item.price).toFixed(2)} {item.currency}
+                    </div>
+                    <div className="muted" style={{ marginTop: 4 }}>
+                      Publisher: {item.publisher || "Unknown"}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <Link to={`/games/${item.game_id}`} className="btn subtle sm">
+                      View Details
+                    </Link>
+
+                    <button
+                      type="button"
+                      className="btn primary sm"
+                      onClick={() => handleAddToCart(item.listing_id)}
+                      disabled={addingId === item.listing_id}
+                    >
+                      {addingId === item.listing_id ? "Adding..." : "Add to Cart"}
+                    </button>
+
+                    {storeUrl ? (
+                      <a
+                        href={storeUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn ghost sm"
+                      >
+                        Store Link
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
       )}
     </div>

@@ -101,13 +101,11 @@ export default function Profile() {
 
     window.addEventListener("focus", loadProfile);
     window.addEventListener("storage", refreshLocalUser);
-    window.addEventListener(AUTH_EVENT, loadProfile);
     window.addEventListener(WISHLIST_EVENT, loadProfile);
 
     return () => {
       window.removeEventListener("focus", loadProfile);
       window.removeEventListener("storage", refreshLocalUser);
-      window.removeEventListener(AUTH_EVENT, loadProfile);
       window.removeEventListener(WISHLIST_EVENT, loadProfile);
     };
   }, []);

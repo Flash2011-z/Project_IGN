@@ -26,13 +26,10 @@ const PLACEHOLDER =
 function GameCover({ src, alt }) {
   const [imgSrc, setImgSrc] = useState(src || PLACEHOLDER);
 
-  useEffect(() => {
-    setImgSrc(src || PLACEHOLDER);
-  }, [src]);
-
   return (
     <div className="coverWrap">
       <img
+        key={src || PLACEHOLDER}
         className="coverImg"
         src={imgSrc}
         alt={alt}

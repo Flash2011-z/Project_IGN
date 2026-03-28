@@ -40,18 +40,16 @@ function clamp(n, min, max) {
 }
 
 function CoverImg({ src, alt, style }) {
-  const [imgSrc, setImgSrc] = useState(src || PLACEHOLDER);
-
-  useEffect(() => {
-    setImgSrc(src || PLACEHOLDER);
-  }, [src]);
+  const [hasError, setHasError] = useState(false);
+  const nextSrc = hasError ? PLACEHOLDER : (src || PLACEHOLDER);
 
   return (
     <img
-      src={imgSrc}
+      key={src || PLACEHOLDER}
+      src={nextSrc}
       alt={alt}
       loading="lazy"
-      onError={() => setImgSrc(PLACEHOLDER)}
+      onError={() => setHasError(true)}
       style={style}
     />
   );
@@ -110,7 +108,7 @@ export default function GameDetails() {
           description: data.description,
           listings: Array.isArray(data.listings) ? data.listings : [],
         });
-      } catch (err) {
+      } catch {
         setError("Failed to fetch game");
       } finally {
         setLoading(false);
@@ -138,7 +136,7 @@ export default function GameDetails() {
 
         const data = await response.json();
         setReviews(Array.isArray(data) ? data : []);
-      } catch (err) {
+      } catch {
         setReviews([]);
         setReviewsError("Failed to load reviews");
       } finally {
@@ -326,7 +324,7 @@ export default function GameDetails() {
       setText("");
       setReviewMessage("Review submitted successfully.");
       await loadLatestReviews();
-    } catch (err) {
+    } catch {
       alert("Failed to submit review.");
     } finally {
       setSubmittingReview(false);

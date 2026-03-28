@@ -77,7 +77,7 @@ export default function Navbar() {
     setUser(null);
     setWishCount(0);
     setCartCount(0);
-    navigate("/");
+    navigate("/", { replace: true });
   }
 
   return (
@@ -183,6 +183,12 @@ export default function Navbar() {
               <Link to="/orders" className="btn ghost">
                 Orders
               </Link>
+
+              {user.role === "admin" ? (
+                <Link to="/admin" className="btn ghost">
+                  Admin
+                </Link>
+              ) : null}
 
               <button type="button" className="btn primary" onClick={handleLogout}>
                 Logout

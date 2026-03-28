@@ -17,6 +17,8 @@ import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
 import OrderSuccess from "./pages/OrderSuccess";
 import Orders from "./pages/Orders";
+import Admin from "./pages/Admin";
+import AdminEditGame from "./pages/AdminEditGame";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -102,6 +104,24 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Orders />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute adminOnly>
+                <Admin />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/games/:id/edit"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminEditGame />
               </ProtectedRoute>
             }
           />
