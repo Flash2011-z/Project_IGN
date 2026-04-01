@@ -4,6 +4,7 @@ import { AUTH_EVENT, WISHLIST_EVENT, getStoredUser, authHeader } from "../utils/
 import { addWishlistGame, fetchWishlistIds, removeWishlistGame } from "../utils/wishlist";
 import { addCartItem } from "../utils/cart";
 import { getAvatarUrl } from "../utils/avatar";
+import CommentThread from "../components/CommentThread";
 
 const API_BASE = "http://localhost:4000";
 
@@ -67,6 +68,14 @@ export default function GameDetails() {
   const [reviews, setReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewsError, setReviewsError] = useState("");
+  const [editingReviewId, setEditingReviewId] = useState(null);
+  const [editingReviewText, setEditingReviewText] = useState("");
+  const [editingReviewScore, setEditingReviewScore] = useState("");
+  const [reviewActionKey, setReviewActionKey] = useState("");
+
+  const [comments, setComments] = useState([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState("");
 
   const [score, setScore] = useState("9.0");
   const [text, setText] = useState("");
@@ -77,7 +86,23 @@ export default function GameDetails() {
   const [wishlist, setWishlist] = useState([]);
   const [addingListingId, setAddingListingId] = useState(null);
 
-  const currentUser = getStoredUser();
+  const [currentUser, setCurrentUser] = useState(() => getStoredUser());
+
+  useEffect(() => {
+    function syncCurrentUser() {
+      setCurrentUser(getStoredUser());
+    }
+
+    syncCurrentUser();
+
+    window.addEventListener("storage", syncCurrentUser);
+    window.addEventListener(AUTH_EVENT, syncCurrentUser);
+
+    return () => {
+      window.removeEventListener("storage", syncCurrentUser);
+      window.removeEventListener(AUTH_EVENT, syncCurrentUser);
+    };
+  }, []);
 
   useEffect(() => {
     async function fetchGame() {
@@ -121,14 +146,16 @@ export default function GameDetails() {
   }, [gameId]);
 
   useEffect(() => {
-    async function fetchReviews() {
+    async function loadReviews() {
       if (gameId === null) return;
 
       try {
         setReviewsLoading(true);
         setReviewsError("");
 
-        const response = await fetch(`${API_BASE}/games/${gameId}/reviews`);
+        const response = await fetch(`${API_BASE}/games/${gameId}/reviews`, {
+          headers: authHeader(),
+        });
 
         if (!response.ok) {
           throw new Error("Failed to fetch reviews");
@@ -144,8 +171,38 @@ export default function GameDetails() {
       }
     }
 
-    fetchReviews();
-  }, [gameId]);
+    loadReviews();
+  }, [gameId, currentUser?.id]);
+
+  useEffect(() => {
+    async function fetchComments() {
+      if (gameId === null) return;
+
+      try {
+        setCommentsLoading(true);
+        setCommentsError("");
+        setComments([]);
+
+        const response = await fetch(`${API_BASE}/games/${gameId}/comments`, {
+          headers: authHeader(),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch comments");
+        }
+
+        const data = await response.json();
+        setComments(Array.isArray(data) ? data : []);
+      } catch {
+        setComments([]);
+        setCommentsError("Failed to load comments");
+      } finally {
+        setCommentsLoading(false);
+      }
+    }
+
+    fetchComments();
+  }, [gameId, currentUser?.id]);
 
   useEffect(() => {
     async function loadWishlist() {
@@ -258,16 +315,198 @@ export default function GameDetails() {
     return gameReviews.some((r) => Number(r.userId) === Number(currentUser.id));
   }, [gameReviews, currentUser]);
 
-  async function loadLatestReviews() {
+  const commentsByReview = useMemo(() => {
+    const grouped = new Map();
+
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      const reviewId = Number(comment.userReviewId);
+
+      if (!grouped.has(reviewId)) {
+        grouped.set(reviewId, []);
+      }
+
+      grouped.get(reviewId).push(comment);
+    }
+
+    return grouped;
+  }, [comments]);
+
+  async function loadReviews() {
     if (gameId === null) return;
 
     try {
-      const response = await fetch(`${API_BASE}/games/${gameId}/reviews`);
+      setReviewsLoading(true);
+      setReviewsError("");
+
+      const response = await fetch(`${API_BASE}/games/${gameId}/reviews`, {
+        headers: authHeader(),
+      });
       if (!response.ok) throw new Error("Failed");
       const data = await response.json();
       setReviews(Array.isArray(data) ? data : []);
     } catch {
       // keep existing reviews if reload fails
+    } finally {
+      setReviewsLoading(false);
+    }
+  }
+
+  async function loadComments() {
+    if (gameId === null) return;
+
+    try {
+      setCommentsLoading(true);
+      setCommentsError("");
+
+      const response = await fetch(`${API_BASE}/games/${gameId}/comments`, {
+        headers: authHeader(),
+      });
+
+      if (!response.ok) throw new Error("Failed");
+
+      const data = await response.json();
+      setComments(Array.isArray(data) ? data : []);
+    } catch {
+      setCommentsError("Failed to load comments");
+    } finally {
+      setCommentsLoading(false);
+    }
+  }
+
+  async function mutateComment(url, method, body) {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeader(),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to update comment");
+    }
+
+    await loadComments();
+    return data;
+  }
+
+  async function handleCreateComment(reviewId, content) {
+    return mutateComment(`${API_BASE}/reviews/${reviewId}/comments`, "POST", { content });
+  }
+
+  async function handleReplyComment(commentId, content) {
+    return mutateComment(`${API_BASE}/comments/${commentId}/replies`, "POST", { content });
+  }
+
+  async function handleEditComment(commentId, content) {
+    return mutateComment(`${API_BASE}/comments/${commentId}`, "PUT", { content });
+  }
+
+  async function handleDeleteComment(commentId) {
+    return mutateComment(`${API_BASE}/comments/${commentId}`, "DELETE");
+  }
+
+  async function handleLoveComment(commentId) {
+    return mutateComment(`${API_BASE}/comments/${commentId}/love`, "POST");
+  }
+
+  function startEditReview(review) {
+    setEditingReviewId(review.id);
+    setEditingReviewText(String(review.text || ""));
+    setEditingReviewScore(String(review.score ?? ""));
+  }
+
+  function cancelEditReview() {
+    setEditingReviewId(null);
+    setEditingReviewText("");
+    setEditingReviewScore("");
+  }
+
+  async function mutateReview(url, method, body, busyKey) {
+    try {
+      setReviewActionKey(busyKey || "");
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader(),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update review");
+      }
+
+      await loadReviews();
+      return data;
+    } finally {
+      setReviewActionKey("");
+    }
+  }
+
+  async function handleEditReview(reviewId) {
+    const trimmedText = String(editingReviewText || "").trim();
+    const nScore = parseFloat(editingReviewScore);
+
+    if (trimmedText.length < 10) {
+      alert("Review text is too short (min 10 chars).");
+      return;
+    }
+
+    if (Number.isNaN(nScore) || nScore < 0 || nScore > 10) {
+      alert("Score must be between 0 and 10.");
+      return;
+    }
+
+    try {
+      await mutateReview(
+        `${API_BASE}/reviews/${reviewId}`,
+        "PUT",
+        {
+          reviewText: trimmedText,
+          score: Math.round(nScore * 10) / 10,
+        },
+        `edit-${reviewId}`
+      );
+      cancelEditReview();
+    } catch (err) {
+      alert(err.message || "Failed to update review.");
+    }
+  }
+
+  async function handleDeleteReview(reviewId) {
+    const ok = window.confirm("Delete this review? This cannot be undone.");
+
+    if (!ok) return;
+
+    try {
+      await mutateReview(`${API_BASE}/reviews/${reviewId}`, "DELETE", null, `delete-${reviewId}`);
+      if (editingReviewId === reviewId) {
+        cancelEditReview();
+      }
+    } catch (err) {
+      alert(err.message || "Failed to delete review.");
+    }
+  }
+
+  async function handleLoveReview(reviewId) {
+    if (!currentUser?.id) {
+      alert("Please login to love reviews.");
+      return;
+    }
+
+    try {
+      await mutateReview(`${API_BASE}/reviews/${reviewId}/love`, "POST", null, `love-${reviewId}`);
+    } catch (err) {
+      alert(err.message || "Failed to update review love.");
     }
   }
 
@@ -323,7 +562,7 @@ export default function GameDetails() {
       setScore("9.0");
       setText("");
       setReviewMessage("Review submitted successfully.");
-      await loadLatestReviews();
+      await loadReviews();
     } catch {
       alert("Failed to submit review.");
     } finally {
@@ -682,6 +921,12 @@ export default function GameDetails() {
             </div>
           </div>
 
+          {commentsError ? (
+            <div className="glass" style={{ marginTop: 12, padding: 12 }}>
+              <div className="muted">{commentsError}</div>
+            </div>
+          ) : null}
+
           <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
             {reviewsLoading ? (
               <div className="glass" style={{ padding: 12 }}>
@@ -696,48 +941,144 @@ export default function GameDetails() {
                 <div className="muted">No reviews yet. Add the first one below.</div>
               </div>
             ) : (
-              gameReviews.map((r) => (
-                <div key={r.id} className="glass" style={{ padding: 12, display: "flex", gap: 12 }}>
-                  <img
-                    src={r.avatar || getAvatarUrl(r)}
-                    alt={r.user}
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.06)",
-                    }}
-                  />
+              gameReviews.map((r) => {
+                const isOwner = Number(currentUser?.id) === Number(r.userId);
+                const isEditing = editingReviewId === r.id;
+                const loved = Boolean(r.lovedByMe);
 
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 950 }}>{r.user}</div>
-                      <span className="muted">•</span>
-                      <div className="muted" style={{ fontWeight: 800 }}>
-                        {String(r.date || "").slice(0, 10)}
-                      </div>
+                return (
+                  <div key={r.id} style={{ display: "grid", gap: 12 }}>
+                    <div className="glass" style={{ padding: 12, display: "flex", gap: 12 }}>
+                      <img
+                        src={r.avatar || getAvatarUrl(r)}
+                        alt={r.user}
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(255,255,255,0.06)",
+                        }}
+                      />
 
-                      <div style={{ marginLeft: "auto", fontWeight: 950 }}>
-                        <span
-                          style={{
-                            background: "rgba(255,255,255,0.10)",
-                            border: "1px solid rgba(255,255,255,0.14)",
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                          }}
-                        >
-                          {Number(r.score || 0).toFixed(1)}
-                        </span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                          <div style={{ fontWeight: 950 }}>{r.user}</div>
+                          <span className="muted">•</span>
+                          <div className="muted" style={{ fontWeight: 800 }}>
+                            {String(r.date || "").slice(0, 10)}
+                          </div>
+
+                          {String(r.updatedAt || "").slice(0, 19) !== String(r.date || "").slice(0, 19) ? (
+                            <span className="badge">Edited</span>
+                          ) : null}
+
+                          <div style={{ marginLeft: "auto", fontWeight: 950 }}>
+                            <span
+                              style={{
+                                background: "rgba(255,255,255,0.10)",
+                                border: "1px solid rgba(255,255,255,0.14)",
+                                padding: "4px 10px",
+                                borderRadius: 999,
+                              }}
+                            >
+                              {Number(r.score || 0).toFixed(1)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {isEditing ? (
+                          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+                            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 160px" }}>
+                              <textarea
+                                className="input"
+                                rows={4}
+                                value={editingReviewText}
+                                onChange={(e) => setEditingReviewText(e.target.value)}
+                                style={{ resize: "vertical" }}
+                              />
+
+                              <input
+                                className="input"
+                                placeholder="Score (0-10)"
+                                value={editingReviewScore}
+                                onChange={(e) => setEditingReviewScore(e.target.value)}
+                              />
+                            </div>
+
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                className="btn primary"
+                                onClick={() => handleEditReview(r.id)}
+                                disabled={reviewActionKey === `edit-${r.id}`}
+                              >
+                                {reviewActionKey === `edit-${r.id}` ? "Saving..." : "Save Review"}
+                              </button>
+
+                              <button type="button" className="btn ghost" onClick={cancelEditReview}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p style={{ margin: "8px 0 0" }} className="text-premium">
+                              {r.text}
+                            </p>
+
+                            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                className={`comment-thread__pill ${loved ? "comment-thread__pill--active" : ""}`}
+                                onClick={() => handleLoveReview(r.id)}
+                                disabled={!currentUser?.id || reviewActionKey === `love-${r.id}`}
+                              >
+                                <span>{loved ? "♥" : "♡"}</span>
+                                <span>{Number(r.loveCount || 0)}</span>
+                              </button>
+
+                              {isOwner ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="comment-thread__link"
+                                    onClick={() => startEditReview(r)}
+                                    disabled={reviewActionKey === `edit-${r.id}` || reviewActionKey === `delete-${r.id}`}
+                                  >
+                                    Edit
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="comment-thread__link comment-thread__link--danger"
+                                    onClick={() => handleDeleteReview(r.id)}
+                                    disabled={reviewActionKey === `delete-${r.id}`}
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
 
-                    <p style={{ margin: "8px 0 0" }} className="text-premium">
-                      {r.text}
-                    </p>
+                    <CommentThread
+                      review={r}
+                      comments={commentsByReview.get(Number(r.id)) || []}
+                      currentUser={currentUser}
+                      loading={commentsLoading}
+                      onCreateComment={handleCreateComment}
+                      onReplyComment={handleReplyComment}
+                      onEditComment={handleEditComment}
+                      onDeleteComment={handleDeleteComment}
+                      onLoveComment={handleLoveComment}
+                    />
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

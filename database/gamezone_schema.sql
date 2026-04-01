@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS wishlist CASCADE;
 DROP TABLE IF EXISTS user_review_like CASCADE;
+DROP TABLE IF EXISTS comment_like CASCADE;
 DROP TABLE IF EXISTS comment CASCADE;
 DROP TABLE IF EXISTS user_review CASCADE;
 DROP TABLE IF EXISTS review CASCADE;
@@ -211,6 +212,7 @@ CREATE TABLE user_review (
   review_text TEXT,
   score NUMERIC(3,1),
   review_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (user_id, game_id)
 );
 
@@ -220,7 +222,8 @@ CREATE TABLE comment (
   user_review_id INT REFERENCES user_review(user_review_id) ON DELETE CASCADE,
   parent_comment_id INT REFERENCES comment(comment_id) ON DELETE CASCADE,
   content TEXT NOT NULL,
-  comment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  comment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE user_review_like (
@@ -228,6 +231,17 @@ CREATE TABLE user_review_like (
   user_review_id INT REFERENCES user_review(user_review_id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, user_review_id)
 );
+
+CREATE TABLE comment_like (
+  user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,
+  comment_id INT REFERENCES comment(comment_id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, comment_id)
+);
+
+CREATE INDEX idx_comment_review_date ON comment(user_review_id, comment_date DESC);
+CREATE INDEX idx_comment_parent_id ON comment(parent_comment_id);
+CREATE INDEX idx_comment_like_comment_id ON comment_like(comment_id);
 
 CREATE TABLE wishlist (
   user_id INT REFERENCES user_account(user_id) ON DELETE CASCADE,

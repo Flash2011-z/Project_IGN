@@ -110,6 +110,21 @@ function requireAuth(req, res, next) {
   }
 }
 
+function getOptionalAuthUser(req) {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const [scheme, token] = authHeader.split(" ");
+
+    if (scheme !== "Bearer" || !token) {
+      return null;
+    }
+
+    return jwt.verify(token, JWT_SECRET);
+  } catch {
+    return null;
+  }
+}
+
 function requireSameUser(req, res, next) {
   const routeUserId = parseInt(
     req.params.userId || req.params.id,
@@ -510,10 +525,30 @@ app.get("/games/:id", async (req, res) => {
    GAME REVIEWS
    ========================= */
 
+function serializeReviewRow(row) {
+  return {
+    id: row.id,
+    userId: row.userId,
+    user: row.user,
+    avatar_style: row.avatar_style,
+    avatar_seed: row.avatar_seed,
+    avatar: buildDicebearAvatar(row.avatar_style, row.avatar_seed || row.user),
+    gameId: row.gameId,
+    text: row.text,
+    score: Number(row.score || 0),
+    date: row.date,
+    updatedAt: row.updatedAt,
+    loveCount: Number(row.loveCount || 0),
+    lovedByMe: Boolean(row.lovedByMe),
+  };
+}
+
 /* Get all reviews for one game */
 app.get("/games/:id/reviews", async (req, res) => {
   try {
     const gameId = parseInt(req.params.id, 10);
+    const authUser = getOptionalAuthUser(req);
+    const currentUserId = Number(authUser?.id || null);
 
     if (Number.isNaN(gameId)) {
       return res.status(400).json({ error: "Invalid game id" });
@@ -539,19 +574,29 @@ app.get("/games/:id/reviews", async (req, res) => {
         ur.game_id AS "gameId",
         ur.review_text AS text,
         ur.score,
-        ur.review_date AS date
+        ur.review_date AS date,
+        ur.updated_at AS "updatedAt",
+        COALESCE(l.love_count, 0) AS "loveCount",
+        COALESCE(my_like.loved_by_me, false) AS "lovedByMe"
       FROM user_review ur
       JOIN user_account ua ON ur.user_id = ua.user_id
+      LEFT JOIN (
+        SELECT user_review_id, COUNT(*)::int AS love_count
+        FROM user_review_like
+        GROUP BY user_review_id
+      ) l ON l.user_review_id = ur.user_review_id
+      LEFT JOIN (
+        SELECT user_review_id, true AS loved_by_me
+        FROM user_review_like
+        WHERE user_id = $2
+      ) my_like ON my_like.user_review_id = ur.user_review_id
       WHERE ur.game_id = $1
       ORDER BY ur.review_date DESC
       `,
-      [gameId]
+      [gameId, currentUserId || null]
     );
 
-    const reviews = result.rows.map((row) => ({
-      ...row,
-      avatar: buildDicebearAvatar(row.avatar_style, row.avatar_seed || row.user),
-    }));
+    const reviews = result.rows.map(serializeReviewRow);
 
     return res.json(reviews);
   } catch (err) {
@@ -616,8 +661,8 @@ app.post("/games/:id/reviews", requireAuth, async (req, res) => {
 
     const created = await pool.query(
       `
-      INSERT INTO user_review (user_id, game_id, review_text, score, review_date)
-      VALUES ($1, $2, $3, $4, NOW())
+      INSERT INTO user_review (user_id, game_id, review_text, score, review_date, updated_at)
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
       RETURNING user_review_id AS id
       `,
       [userId, gameId, reviewText, score]
@@ -648,6 +693,502 @@ app.post("/games/:id/reviews", requireAuth, async (req, res) => {
       return res.status(409).json({ error: "You already reviewed this game" });
     }
 
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/reviews/:reviewId", requireAuth, async (req, res) => {
+  try {
+    const reviewId = parseInt(req.params.reviewId, 10);
+    const userId = Number(req.authUser?.id);
+    const score = parseFloat(req.body.score);
+    const reviewText = String(req.body.reviewText || "").trim();
+
+    if (Number.isNaN(reviewId) || Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid review id or user id" });
+    }
+
+    if (Number.isNaN(score) || score < 0 || score > 10) {
+      return res.status(400).json({ error: "Score must be between 0 and 10" });
+    }
+
+    if (reviewText.length < 10) {
+      return res
+        .status(400)
+        .json({ error: "Review text must be at least 10 characters" });
+    }
+
+    const existingReview = await pool.query(
+      `
+      SELECT user_review_id, user_id, game_id
+      FROM user_review
+      WHERE user_review_id = $1
+      LIMIT 1
+      `,
+      [reviewId]
+    );
+
+    if (existingReview.rowCount === 0) {
+      return res.status(404).json({ error: "Review not found" });
+    }
+
+    if (Number(existingReview.rows[0].user_id) !== userId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    await pool.query(
+      `
+      UPDATE user_review
+      SET review_text = $1,
+          score = $2,
+          updated_at = NOW()
+      WHERE user_review_id = $3
+      `,
+      [reviewText, score, reviewId]
+    );
+
+    await updateGameAverageScore(existingReview.rows[0].game_id);
+
+    return res.json({ ok: true, id: reviewId, gameId: existingReview.rows[0].game_id });
+  } catch (err) {
+    console.error("PUT /reviews/:reviewId error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
+  try {
+    const reviewId = parseInt(req.params.reviewId, 10);
+    const userId = Number(req.authUser?.id);
+
+    if (Number.isNaN(reviewId) || Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid review id or user id" });
+    }
+
+    const existingReview = await pool.query(
+      `
+      SELECT user_review_id, user_id, game_id
+      FROM user_review
+      WHERE user_review_id = $1
+      LIMIT 1
+      `,
+      [reviewId]
+    );
+
+    if (existingReview.rowCount === 0) {
+      return res.status(404).json({ error: "Review not found" });
+    }
+
+    if (Number(existingReview.rows[0].user_id) !== userId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    await pool.query("DELETE FROM user_review WHERE user_review_id = $1", [reviewId]);
+    await updateGameAverageScore(existingReview.rows[0].game_id);
+
+    return res.json({ ok: true, gameId: existingReview.rows[0].game_id });
+  } catch (err) {
+    console.error("DELETE /reviews/:reviewId error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/reviews/:reviewId/love", requireAuth, async (req, res) => {
+  try {
+    const reviewId = parseInt(req.params.reviewId, 10);
+    const userId = Number(req.authUser?.id);
+
+    if (Number.isNaN(reviewId) || Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid review id or user id" });
+    }
+
+    const reviewExists = await pool.query(
+      "SELECT 1 FROM user_review WHERE user_review_id = $1 LIMIT 1",
+      [reviewId]
+    );
+
+    if (reviewExists.rowCount === 0) {
+      return res.status(404).json({ error: "Review not found" });
+    }
+
+    const existingLove = await pool.query(
+      `
+      SELECT 1
+      FROM user_review_like
+      WHERE user_id = $1 AND user_review_id = $2
+      LIMIT 1
+      `,
+      [userId, reviewId]
+    );
+
+    let loved = false;
+
+    if (existingLove.rowCount > 0) {
+      await pool.query(
+        `
+        DELETE FROM user_review_like
+        WHERE user_id = $1 AND user_review_id = $2
+        `,
+        [userId, reviewId]
+      );
+    } else {
+      loved = true;
+      await pool.query(
+        `
+        INSERT INTO user_review_like (user_id, user_review_id)
+        VALUES ($1, $2)
+        `,
+        [userId, reviewId]
+      );
+    }
+
+    const countResult = await pool.query(
+      `
+      SELECT COUNT(*)::int AS love_count
+      FROM user_review_like
+      WHERE user_review_id = $1
+      `,
+      [reviewId]
+    );
+
+    return res.json({
+      ok: true,
+      loved,
+      loveCount: Number(countResult.rows[0]?.love_count || 0),
+    });
+  } catch (err) {
+    console.error("POST /reviews/:reviewId/love error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/* =========================
+   COMMENT THREADS
+   ========================= */
+
+function serializeCommentRow(row) {
+  return {
+    id: row.id,
+    userId: row.userId,
+    user: row.user,
+    avatar_style: row.avatar_style,
+    avatar_seed: row.avatar_seed,
+    avatar: buildDicebearAvatar(row.avatar_style, row.avatar_seed || row.user),
+    userReviewId: row.userReviewId,
+    parentCommentId: row.parentCommentId,
+    text: row.text,
+    date: row.date,
+    updatedAt: row.updatedAt,
+    loveCount: Number(row.loveCount || 0),
+    lovedByMe: Boolean(row.lovedByMe),
+  };
+}
+
+app.get("/games/:id/comments", async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.id, 10);
+    const authUser = getOptionalAuthUser(req);
+    const currentUserId = Number(authUser?.id || null);
+
+    if (Number.isNaN(gameId)) {
+      return res.status(400).json({ error: "Invalid game id" });
+    }
+
+    const gameExists = await pool.query(
+      "SELECT 1 FROM game WHERE game_id = $1 LIMIT 1",
+      [gameId]
+    );
+
+    if (gameExists.rowCount === 0) {
+      return res.status(404).json({ error: "Game not found" });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        c.comment_id AS id,
+        c.user_id AS "userId",
+        ua.username AS user,
+        COALESCE(ua.avatar_style, 'adventurer') AS avatar_style,
+        COALESCE(ua.avatar_seed, ua.username) AS avatar_seed,
+        c.user_review_id AS "userReviewId",
+        c.parent_comment_id AS "parentCommentId",
+        c.content AS text,
+        c.comment_date AS date,
+        c.updated_at AS "updatedAt",
+        COALESCE(l.love_count, 0) AS "loveCount",
+        COALESCE(my_like.loved_by_me, false) AS "lovedByMe"
+      FROM comment c
+      JOIN user_review ur ON c.user_review_id = ur.user_review_id
+      JOIN user_account ua ON c.user_id = ua.user_id
+      LEFT JOIN (
+        SELECT comment_id, COUNT(*)::int AS love_count
+        FROM comment_like
+        GROUP BY comment_id
+      ) l ON l.comment_id = c.comment_id
+      LEFT JOIN (
+        SELECT comment_id, true AS loved_by_me
+        FROM comment_like
+        WHERE user_id = $2
+      ) my_like ON my_like.comment_id = c.comment_id
+      WHERE ur.game_id = $1
+      ORDER BY ur.user_review_id DESC, c.comment_date ASC, c.comment_id ASC
+      `,
+      [gameId, currentUserId || null]
+    );
+
+    return res.json(result.rows.map(serializeCommentRow));
+  } catch (err) {
+    console.error("GET /games/:id/comments error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/reviews/:reviewId/comments", requireAuth, async (req, res) => {
+  try {
+    const reviewId = parseInt(req.params.reviewId, 10);
+    const userId = Number(req.authUser?.id);
+    const content = String(req.body.content || "").trim();
+
+    if (Number.isNaN(reviewId) || Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid review id or user id" });
+    }
+
+    if (content.length < 3) {
+      return res.status(400).json({ error: "Comment must be at least 3 characters" });
+    }
+
+    const reviewResult = await pool.query(
+      `
+      SELECT user_review_id
+      FROM user_review
+      WHERE user_review_id = $1
+      LIMIT 1
+      `,
+      [reviewId]
+    );
+
+    if (reviewResult.rowCount === 0) {
+      return res.status(404).json({ error: "Review not found" });
+    }
+
+    const created = await pool.query(
+      `
+      INSERT INTO comment (user_id, user_review_id, parent_comment_id, content, comment_date, updated_at)
+      VALUES ($1, $2, NULL, $3, NOW(), NOW())
+      RETURNING comment_id AS id
+      `,
+      [userId, reviewId, content]
+    );
+
+    return res.status(201).json({ ok: true, id: created.rows[0].id });
+  } catch (err) {
+    console.error("POST /reviews/:reviewId/comments error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/comments/:commentId/replies", requireAuth, async (req, res) => {
+  try {
+    const commentId = parseInt(req.params.commentId, 10);
+    const userId = Number(req.authUser?.id);
+    const content = String(req.body.content || "").trim();
+
+    if (Number.isNaN(commentId) || Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid comment id or user id" });
+    }
+
+    if (content.length < 3) {
+      return res.status(400).json({ error: "Comment must be at least 3 characters" });
+    }
+
+    const parentResult = await pool.query(
+      `
+      SELECT c.comment_id, c.user_review_id, c.parent_comment_id
+      FROM comment c
+      WHERE c.comment_id = $1
+      LIMIT 1
+      `,
+      [commentId]
+    );
+
+    if (parentResult.rowCount === 0) {
+      return res.status(404).json({ error: "Comment not found" });
+    }
+
+    const parentComment = parentResult.rows[0];
+
+    if (parentComment.parent_comment_id) {
+      return res.status(400).json({ error: "Replies are limited to one level" });
+    }
+
+    const created = await pool.query(
+      `
+      INSERT INTO comment (user_id, user_review_id, parent_comment_id, content, comment_date, updated_at)
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
+      RETURNING comment_id AS id
+      `,
+      [userId, parentComment.user_review_id, commentId, content]
+    );
+
+    return res.status(201).json({ ok: true, id: created.rows[0].id });
+  } catch (err) {
+    console.error("POST /comments/:commentId/replies error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/comments/:commentId", requireAuth, async (req, res) => {
+  try {
+    const commentId = parseInt(req.params.commentId, 10);
+    const userId = Number(req.authUser?.id);
+    const content = String(req.body.content || "").trim();
+
+    if (Number.isNaN(commentId) || Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid comment id or user id" });
+    }
+
+    if (content.length < 3) {
+      return res.status(400).json({ error: "Comment must be at least 3 characters" });
+    }
+
+    const existing = await pool.query(
+      `
+      SELECT comment_id, user_id
+      FROM comment
+      WHERE comment_id = $1
+      LIMIT 1
+      `,
+      [commentId]
+    );
+
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: "Comment not found" });
+    }
+
+    if (Number(existing.rows[0].user_id) !== userId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const updated = await pool.query(
+      `
+      UPDATE comment
+      SET content = $1,
+          updated_at = NOW()
+      WHERE comment_id = $2
+      RETURNING comment_id AS id
+      `,
+      [content, commentId]
+    );
+
+    return res.json({ ok: true, id: updated.rows[0].id });
+  } catch (err) {
+    console.error("PUT /comments/:commentId error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/comments/:commentId", requireAuth, async (req, res) => {
+  try {
+    const commentId = parseInt(req.params.commentId, 10);
+    const userId = Number(req.authUser?.id);
+
+    if (Number.isNaN(commentId) || Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid comment id or user id" });
+    }
+
+    const existing = await pool.query(
+      `
+      SELECT comment_id, user_id
+      FROM comment
+      WHERE comment_id = $1
+      LIMIT 1
+      `,
+      [commentId]
+    );
+
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: "Comment not found" });
+    }
+
+    if (Number(existing.rows[0].user_id) !== userId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    await pool.query("DELETE FROM comment WHERE comment_id = $1", [commentId]);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /comments/:commentId error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/comments/:commentId/love", requireAuth, async (req, res) => {
+  try {
+    const commentId = parseInt(req.params.commentId, 10);
+    const userId = Number(req.authUser?.id);
+
+    if (Number.isNaN(commentId) || Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid comment id or user id" });
+    }
+
+    const commentExists = await pool.query(
+      "SELECT 1 FROM comment WHERE comment_id = $1 LIMIT 1",
+      [commentId]
+    );
+
+    if (commentExists.rowCount === 0) {
+      return res.status(404).json({ error: "Comment not found" });
+    }
+
+    const existingLove = await pool.query(
+      `
+      SELECT 1
+      FROM comment_like
+      WHERE user_id = $1 AND comment_id = $2
+      LIMIT 1
+      `,
+      [userId, commentId]
+    );
+
+    let loved = false;
+
+    if (existingLove.rowCount > 0) {
+      await pool.query(
+        `
+        DELETE FROM comment_like
+        WHERE user_id = $1 AND comment_id = $2
+        `,
+        [userId, commentId]
+      );
+    } else {
+      loved = true;
+      await pool.query(
+        `
+        INSERT INTO comment_like (user_id, comment_id, created_at)
+        VALUES ($1, $2, NOW())
+        `,
+        [userId, commentId]
+      );
+    }
+
+    const loveCountResult = await pool.query(
+      `
+      SELECT COUNT(*)::int AS love_count
+      FROM comment_like
+      WHERE comment_id = $1
+      `,
+      [commentId]
+    );
+
+    return res.json({
+      ok: true,
+      loved,
+      loveCount: Number(loveCountResult.rows[0]?.love_count || 0),
+    });
+  } catch (err) {
+    console.error("POST /comments/:commentId/love error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
@@ -1432,6 +1973,9 @@ app.get("/home/featured", async (req, res) => {
 
 app.get("/home/reviews", async (req, res) => {
   try {
+    const authUser = getOptionalAuthUser(req);
+    const currentUserId = Number(authUser?.id || null);
+
     const result = await pool.query(`
       SELECT 
         ur.user_review_id AS id,
@@ -1444,13 +1988,26 @@ app.get("/home/reviews", async (req, res) => {
         ur.review_text AS text,
         ur.score,
         ur.review_date AS date,
-        g.accent_color AS accent
+        g.accent_color AS accent,
+        COALESCE(l.love_count, 0) AS "loveCount",
+        COALESCE(my_like.loved_by_me, false) AS "lovedByMe"
       FROM user_review ur
       JOIN user_account u ON ur.user_id = u.user_id
       JOIN game g ON ur.game_id = g.game_id
+      LEFT JOIN (
+        SELECT user_review_id, COUNT(*)::int AS love_count
+        FROM user_review_like
+        GROUP BY user_review_id
+      ) l ON l.user_review_id = ur.user_review_id
+      LEFT JOIN (
+        SELECT user_review_id, true AS loved_by_me
+        FROM user_review_like
+        WHERE user_id = $1
+      ) my_like ON my_like.user_review_id = ur.user_review_id
       ORDER BY ur.review_date DESC
       LIMIT 5
-    `);
+    `,
+    [currentUserId || null]);
 
     const reviewsWithAvatar = result.rows.map((r) => ({
       ...r,

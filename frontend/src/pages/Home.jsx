@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { AUTH_EVENT, getStoredUser, getStoredToken } from "../utils/auth";
+import { AUTH_EVENT, getStoredUser, getStoredToken, authHeader } from "../utils/auth";
 
 function formatDate(iso) {
   return iso;
@@ -12,6 +12,7 @@ export default function Home() {
   const [hero, setHero] = useState(null);
   const [featuredGames, setFeaturedGames] = useState([]);
   const [latestReviews, setLatestReviews] = useState([]);
+  const [reviewActionKey, setReviewActionKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!getStoredToken() && !!getStoredUser()?.id);
 
@@ -44,7 +45,7 @@ export default function Home() {
         const [heroRes, featuredRes, reviewRes] = await Promise.all([
           fetch(`${API_BASE}/home/hero`),
           fetch(`${API_BASE}/home/featured`),
-          fetch(`${API_BASE}/home/reviews`)
+          fetch(`${API_BASE}/home/reviews`, { headers: authHeader() })
         ]);
 
         const heroData = await heroRes.json();
@@ -63,6 +64,49 @@ export default function Home() {
 
     loadHome();
   }, []);
+
+  async function handleLoveReview(reviewId) {
+    const user = getStoredUser();
+
+    if (!user?.id) {
+      alert("Please login to love reviews.");
+      return;
+    }
+
+    try {
+      setReviewActionKey(`love-${reviewId}`);
+
+      const response = await fetch(`${API_BASE}/reviews/${reviewId}/love`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader(),
+        },
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update review love.");
+      }
+
+      setLatestReviews((prev) =>
+        prev.map((review) =>
+          Number(review.id) === Number(reviewId)
+            ? {
+                ...review,
+                lovedByMe: Boolean(data.loved),
+                loveCount: Number(data.loveCount || review.loveCount || 0),
+              }
+            : review
+        )
+      );
+    } catch (err) {
+      alert(err.message || "Failed to update review love.");
+    } finally {
+      setReviewActionKey("");
+    }
+  }
 
   if (loading || !hero) {
     return <div className="container">Loading homepage...</div>;
@@ -348,6 +392,16 @@ export default function Home() {
                 <Link to={`/games/${r.gameId}`} className="btn">
                   View Game
                 </Link>
+
+                <button
+                  type="button"
+                  className={`comment-thread__pill ${r.lovedByMe ? "comment-thread__pill--active" : ""}`}
+                  onClick={() => handleLoveReview(r.id)}
+                  disabled={!isLoggedIn || reviewActionKey === `love-${r.id}`}
+                >
+                  <span>{r.lovedByMe ? "♥" : "♡"}</span>
+                  <span>{Number(r.loveCount || 0)}</span>
+                </button>
 
                 <span
                   style={{
