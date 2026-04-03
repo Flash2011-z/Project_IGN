@@ -384,6 +384,61 @@ export default function Admin() {
     }
   }
 
+  async function handleTogglePlayerBadge(review) {
+    const isMarked = Boolean(review.isPlayerVerified);
+    const key = `player-${review.id}`;
+    const actionLabel = isMarked ? "remove" : "mark";
+
+    const ok = window.confirm(
+      isMarked
+        ? `Remove player badge for ${review.userName} on ${review.gameTitle}?`
+        : `Mark ${review.userName} as a player of ${review.gameTitle}?`
+    );
+
+    if (!ok) return;
+
+    setBusyId(key);
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        isMarked
+          ? `${API_BASE}/admin/player-badges/${review.userId}/${review.gameId}`
+          : `${API_BASE}/admin/player-badges`,
+        {
+          method: isMarked ? "DELETE" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader(),
+          },
+          body: isMarked
+            ? undefined
+            : JSON.stringify({
+              userId: review.userId,
+              gameId: review.gameId,
+            }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || `Failed to ${actionLabel} player badge`);
+      }
+
+      await loadOverview();
+      setMessage(
+        isMarked
+          ? `Removed player badge for ${review.userName}.`
+          : `Marked ${review.userName} as player for ${review.gameTitle}.`
+      );
+    } catch (err) {
+      setMessage(err.message || `Failed to ${actionLabel} player badge.`);
+    } finally {
+      setBusyId("");
+    }
+  }
+
   if (loading) {
     return (
       <div className="container" style={{ paddingBottom: 28 }}>
@@ -710,12 +765,13 @@ export default function Admin() {
           <table className="adminTable">
             <thead className="adminTableHead">
               <tr>
-                <th>Title</th>
-                <th>Publisher</th>
-                <th>Year</th>
+                <th>Game</th>
+                <th>User</th>
+                <th>Player</th>
                 <th>Score</th>
-                <th>Reviews</th>
-                <th>Actions</th>
+                <th>Date</th>
+                <th>Review</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody className="adminTableBody">
@@ -848,6 +904,7 @@ export default function Admin() {
               <tr>
                 <th>Game</th>
                 <th>User</th>
+                <th>Player</th>
                 <th>Score</th>
                 <th>Date</th>
                 <th>Review</th>
@@ -857,34 +914,71 @@ export default function Admin() {
             <tbody className="adminTableBody">
               {pagedReviews.length > 0 ? (
                 pagedReviews.map((review) => {
-                  const key = `review-${review.id}`;
+                  const reviewKey = `review-${review.id}`;
+                  const playerKey = `player-${review.id}`;
+
                   return (
                     <tr key={review.id}>
                       <td className="adminTableCell">{review.gameTitle}</td>
-                      <td className="adminTableCell">{review.userName}</td>
+
+                      <td className="adminTableCell">
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <span>{review.userName}</span>
+                          <span className="muted" style={{ fontSize: 12 }}>
+                            User ID: {review.userId}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="adminTableCell">
+                        {review.isPlayerVerified ? (
+                          <span className="adminBadge success">Player</span>
+                        ) : (
+                          <span className="adminBadge info">No badge</span>
+                        )}
+                      </td>
+
                       <td className="adminTableCell">
                         <span className="adminBadge info">{review.score}</span>
                       </td>
+
                       <td className="adminTableCell">{toShortDate(review.date)}</td>
+
                       <td className="adminTableCell muted" style={{ maxWidth: 260 }}>
                         {String(review.text || "").slice(0, 80) || "-"}
                       </td>
+
                       <td className="adminTableCell">
-                        <button
-                          type="button"
-                          className="adminTableActionBtn danger"
-                          disabled={busyId === key}
-                          onClick={() => handleDeleteReview(review.id)}
-                        >
-                          {busyId === key ? "..." : "Delete"}
-                        </button>
+                        <div className="adminTableActions">
+                          <button
+                            type="button"
+                            className={`adminTableActionBtn ${review.isPlayerVerified ? "danger" : ""}`}
+                            disabled={busyId === playerKey}
+                            onClick={() => handleTogglePlayerBadge(review)}
+                          >
+                            {busyId === playerKey
+                              ? "..."
+                              : review.isPlayerVerified
+                                ? "Remove Player"
+                                : "Mark Player"}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="adminTableActionBtn danger"
+                            disabled={busyId === reviewKey}
+                            onClick={() => handleDeleteReview(review.id)}
+                          >
+                            {busyId === reviewKey ? "..." : "Delete"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} style={{ padding: "24px 14px", textAlign: "center" }}>
+                  <td colSpan={7} style={{ padding: "24px 14px", textAlign: "center" }}>
                     <div className="adminEmptyState">
                       <div className="adminEmptyStateIcon">📭</div>
                       <div className="adminEmptyStateText">No reviews found for current filters.</div>

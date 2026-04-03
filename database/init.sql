@@ -3,3 +3,6 @@
 \i /docker-entrypoint-initdb.d/sql/extra_games.sql
 \i /docker-entrypoint-initdb.d/sql/Description_updated.sql
 \i /docker-entrypoint-initdb.d/sql/order.sql
+\i /docker-entrypoint-initdb.d/sql/functions_Procedures.sql
+\i /docker-entrypoint-initdb.d/sql/Triggers.sql
+\i /docker-entrypoint-initdb.d/sql/Fixation.sql

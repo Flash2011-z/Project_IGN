@@ -34,34 +34,50 @@ function isAdminFromRole(role) {
 }
 
 async function ensureUserAccountAdminRoleColumn() {
-  await pool.query(`
-    ALTER TABLE user_account
-    ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user'
-  `);
+  const client = await pool.connect();
 
-  await pool.query(
-    `
-    UPDATE user_account
-    SET role = $1
-    WHERE role IS NULL OR TRIM(role) = ''
-    `,
-    [USER_ROLE]
-  );
+  try {
+    await client.query("BEGIN");
 
-  const adminEmailList = String(process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
+    await client.query(`
+      ALTER TABLE user_account
+      ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user'
+    `);
 
-  if (adminEmailList.length > 0) {
-    await pool.query(
+    await client.query(
       `
       UPDATE user_account
       SET role = $1
-      WHERE LOWER(email) = ANY($2::text[])
+      WHERE role IS NULL OR TRIM(role) = ''
       `,
-      [ADMIN_ROLE, adminEmailList]
+      [USER_ROLE]
     );
+
+    const adminEmailList = String(process.env.ADMIN_EMAILS || "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (adminEmailList.length > 0) {
+      await client.query(
+        `
+        UPDATE user_account
+        SET role = $1
+        WHERE LOWER(email) = ANY($2::text[])
+        `,
+        [ADMIN_ROLE, adminEmailList]
+      );
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
+    throw err;
+  } finally {
+    client.release();
   }
 }
 
@@ -262,122 +278,7 @@ function resolveStorePurchaseUrl(row) {
   );
 }
 
-async function getOrCreateCart(userId) {
-  const existing = await pool.query(
-    "SELECT cart_id FROM cart WHERE user_id = $1 ORDER BY cart_id ASC LIMIT 1",
-    [userId]
-  );
 
-  if (existing.rowCount > 0) {
-    return existing.rows[0].cart_id;
-  }
-
-  const created = await pool.query(
-    `
-    INSERT INTO cart (user_id, created_at)
-    VALUES ($1, NOW())
-    RETURNING cart_id
-    `,
-    [userId]
-  );
-
-  return created.rows[0].cart_id;
-}
-
-async function getCartItemsForCheckout(userId) {
-  const result = await pool.query(
-    `
-    SELECT
-      c.cart_id,
-      ci.listing_id,
-      ci.quantity,
-      gsl.price,
-      gsl.currency,
-      g.game_id,
-      g.title,
-      g.cover_url AS cover,
-      s.name AS store_name,
-      (ci.quantity * gsl.price) AS subtotal
-    FROM cart c
-    JOIN cart_item ci ON c.cart_id = ci.cart_id
-    JOIN game_store_listing gsl ON ci.listing_id = gsl.listing_id
-    JOIN game g ON gsl.game_id = g.game_id
-    LEFT JOIN store s ON gsl.store_id = s.store_id
-    WHERE c.user_id = $1
-    ORDER BY ci.listing_id ASC
-    `,
-    [userId]
-  );
-
-  return result.rows.map((row) => ({
-    ...row,
-    price: Number(row.price || 0),
-    subtotal: Number(row.subtotal || 0),
-    quantity: Number(row.quantity || 0),
-  }));
-}
-
-async function buildSingleOrder(orderId, userId) {
-  const orderResult = await pool.query(
-    `
-    SELECT
-      o.order_id,
-      o.user_id,
-      o.total_amount,
-      o.total_items,
-      o.currency,
-      o.payment_method,
-      o.customer_name,
-      o.customer_email,
-      o.billing_address,
-      o.order_status,
-      o.created_at
-    FROM customer_order o
-    WHERE o.order_id = $1 AND o.user_id = $2
-    LIMIT 1
-    `,
-    [orderId, userId]
-  );
-
-  if (orderResult.rows.length === 0) {
-    return null;
-  }
-
-  const itemsResult = await pool.query(
-    `
-    SELECT
-      oi.order_item_id,
-      oi.order_id,
-      oi.listing_id,
-      oi.game_id,
-      oi.quantity,
-      oi.unit_price,
-      oi.subtotal,
-      g.title,
-      g.cover_url AS cover,
-      s.name AS store_name
-    FROM order_item oi
-    JOIN game g ON oi.game_id = g.game_id
-    LEFT JOIN game_store_listing gsl ON oi.listing_id = gsl.listing_id
-    LEFT JOIN store s ON gsl.store_id = s.store_id
-    WHERE oi.order_id = $1
-    ORDER BY oi.order_item_id ASC
-    `,
-    [orderId]
-  );
-
-  return {
-    ...orderResult.rows[0],
-    total_amount: Number(orderResult.rows[0].total_amount || 0),
-    total_items: Number(orderResult.rows[0].total_items || 0),
-    items: itemsResult.rows.map((row) => ({
-      ...row,
-      quantity: Number(row.quantity || 0),
-      unit_price: Number(row.unit_price || 0),
-      subtotal: Number(row.subtotal || 0),
-    })),
-  };
-}
 
 /* Health check */
 app.get("/", (req, res) => {
@@ -385,7 +286,7 @@ app.get("/", (req, res) => {
 });
 
 /* Quick DB check */
-app.get("/db-test", async (req, res) => {
+app.get("/db-test", requireAuth, async (req, res) => {
   try {
     const result = await pool.query("SELECT NOW()");
     res.json(result.rows[0]);
@@ -413,7 +314,11 @@ app.get("/games-with-publisher", async (req, res) => {
   }
 });
 
-/* Games list */
+/* Games         
+          List */
+
+
+
 app.get("/games", async (req, res) => {
   try {
     const result = await pool.query(`
@@ -451,7 +356,10 @@ app.get("/games", async (req, res) => {
   }
 });
 
+
 /* Single game details */
+
+
 app.get("/games/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -511,8 +419,35 @@ app.get("/games/:id", async (req, res) => {
       [id]
     );
 
+    const reviewStatsResult = await pool.query(
+      `
+      SELECT *
+      FROM fn_get_game_review_stats($1)
+      `,
+      [id]
+    );
+
+    const wishlistCountResult = await pool.query(
+      `
+      SELECT fn_get_game_wishlist_count($1) AS wishlist_count
+      `,
+      [id]
+    );
+
+    const reviewStats = reviewStatsResult.rows[0] || {
+      avg_score: 0,
+      review_count: 0,
+    };
+
+    const wishlistCount = Number(
+      wishlistCountResult.rows[0]?.wishlist_count || 0
+    );
+
     return res.json({
       ...gameResult.rows[0],
+      score: Number(reviewStats.avg_score || 0),
+      review_count: Number(reviewStats.review_count || 0),
+      wishlist_count: wishlistCount,
       listings: listings.rows,
     });
   } catch (err) {
@@ -540,6 +475,10 @@ function serializeReviewRow(row) {
     updatedAt: row.updatedAt,
     loveCount: Number(row.loveCount || 0),
     lovedByMe: Boolean(row.lovedByMe),
+    isAdmin: Boolean(row.isAdmin),
+    isPurchased: Boolean(row.isPurchased),
+    isPlayerVerified: Boolean(row.isPlayerVerified),
+    badge: row.badge || null,
   };
 }
 
@@ -565,34 +504,56 @@ app.get("/games/:id/reviews", async (req, res) => {
 
     const result = await pool.query(
       `
-      SELECT
-        ur.user_review_id AS id,
-        ur.user_id AS "userId",
-        ua.username AS user,
-        COALESCE(ua.avatar_style, 'adventurer') AS avatar_style,
-        COALESCE(ua.avatar_seed, ua.username) AS avatar_seed,
-        ur.game_id AS "gameId",
-        ur.review_text AS text,
-        ur.score,
-        ur.review_date AS date,
-        ur.updated_at AS "updatedAt",
-        COALESCE(l.love_count, 0) AS "loveCount",
-        COALESCE(my_like.loved_by_me, false) AS "lovedByMe"
-      FROM user_review ur
-      JOIN user_account ua ON ur.user_id = ua.user_id
-      LEFT JOIN (
-        SELECT user_review_id, COUNT(*)::int AS love_count
-        FROM user_review_like
-        GROUP BY user_review_id
-      ) l ON l.user_review_id = ur.user_review_id
-      LEFT JOIN (
-        SELECT user_review_id, true AS loved_by_me
-        FROM user_review_like
-        WHERE user_id = $2
-      ) my_like ON my_like.user_review_id = ur.user_review_id
-      WHERE ur.game_id = $1
-      ORDER BY ur.review_date DESC
-      `,
+  SELECT
+    ur.user_review_id AS id,
+    ur.user_id AS "userId",
+    ua.username AS user,
+    COALESCE(ua.avatar_style, 'adventurer') AS avatar_style,
+    COALESCE(ua.avatar_seed, ua.username) AS avatar_seed,
+    ur.game_id AS "gameId",
+    ur.review_text AS text,
+    ur.score,
+    ur.review_date AS date,
+    ur.updated_at AS "updatedAt",
+    CASE WHEN COALESCE(ua.role, 'user') = 'admin' THEN true ELSE false END AS "isAdmin",
+    COALESCE(l.love_count, 0) AS "loveCount",
+    COALESCE(my_like.loved_by_me, false) AS "lovedByMe",
+    CASE WHEN ugpb.user_id IS NOT NULL THEN true ELSE false END AS "isVerifiedPlayer",
+    CASE WHEN purchased.user_id IS NOT NULL THEN true ELSE false END AS "isPurchased",
+    CASE
+      WHEN ugpb.user_id IS NOT NULL THEN 'verified_player'
+      WHEN purchased.user_id IS NOT NULL THEN 'purchased'
+      ELSE NULL
+    END AS badge
+  FROM user_review ur
+  JOIN user_account ua
+    ON ur.user_id = ua.user_id
+  LEFT JOIN (
+    SELECT user_review_id, COUNT(*)::int AS love_count
+    FROM user_review_like
+    GROUP BY user_review_id
+  ) l
+    ON l.user_review_id = ur.user_review_id
+  LEFT JOIN (
+    SELECT user_review_id, true AS loved_by_me
+    FROM user_review_like
+    WHERE user_id = $2
+  ) my_like
+    ON my_like.user_review_id = ur.user_review_id
+  LEFT JOIN user_game_player_badge ugpb
+    ON ugpb.user_id = ur.user_id
+   AND ugpb.game_id = ur.game_id
+  LEFT JOIN (
+    SELECT DISTINCT co.user_id, oi.game_id
+    FROM customer_order co
+    JOIN order_item oi ON oi.order_id = co.order_id
+    WHERE co.order_status = 'confirmed'
+  ) purchased
+    ON purchased.user_id = ur.user_id
+   AND purchased.game_id = ur.game_id
+  WHERE ur.game_id = $1
+  ORDER BY ur.review_date DESC
+  `,
       [gameId, currentUserId || null]
     );
 
@@ -607,6 +568,8 @@ app.get("/games/:id/reviews", async (req, res) => {
 
 /* Write a review for one game */
 app.post("/games/:id/reviews", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const gameId = parseInt(req.params.id, 10);
     const userId = Number(req.authUser?.id);
@@ -627,25 +590,29 @@ app.post("/games/:id/reviews", requireAuth, async (req, res) => {
         .json({ error: "Review text must be at least 10 characters" });
     }
 
-    const gameExists = await pool.query(
+    await client.query("BEGIN");
+
+    const gameExists = await client.query(
       "SELECT 1 FROM game WHERE game_id = $1 LIMIT 1",
       [gameId]
     );
 
     if (gameExists.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Game not found" });
     }
 
-    const userExists = await pool.query(
+    const userExists = await client.query(
       "SELECT 1 FROM user_account WHERE user_id = $1 LIMIT 1",
       [userId]
     );
 
     if (userExists.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "User not found" });
     }
 
-    const existingReview = await pool.query(
+    const existingReview = await client.query(
       `
       SELECT user_review_id
       FROM user_review
@@ -656,10 +623,11 @@ app.post("/games/:id/reviews", requireAuth, async (req, res) => {
     );
 
     if (existingReview.rowCount > 0) {
+      await client.query("ROLLBACK");
       return res.status(409).json({ error: "You already reviewed this game" });
     }
 
-    const created = await pool.query(
+    const created = await client.query(
       `
       INSERT INTO user_review (user_id, game_id, review_text, score, review_date, updated_at)
       VALUES ($1, $2, $3, $4, NOW(), NOW())
@@ -668,18 +636,8 @@ app.post("/games/:id/reviews", requireAuth, async (req, res) => {
       [userId, gameId, reviewText, score]
     );
 
-    await pool.query(
-      `
-      UPDATE game
-      SET avg_score = (
-        SELECT ROUND(AVG(score)::numeric, 1)
-        FROM user_review
-        WHERE game_id = $1
-      )
-      WHERE game_id = $1
-      `,
-      [gameId]
-    );
+
+    await client.query("COMMIT");
 
     return res.status(201).json({
       ok: true,
@@ -687,6 +645,10 @@ app.post("/games/:id/reviews", requireAuth, async (req, res) => {
       message: "Review submitted successfully",
     });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("POST /games/:id/reviews error:", err);
 
     if (err.code === "23505") {
@@ -694,10 +656,14 @@ app.post("/games/:id/reviews", requireAuth, async (req, res) => {
     }
 
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.put("/reviews/:reviewId", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const reviewId = parseInt(req.params.reviewId, 10);
     const userId = Number(req.authUser?.id);
@@ -718,7 +684,9 @@ app.put("/reviews/:reviewId", requireAuth, async (req, res) => {
         .json({ error: "Review text must be at least 10 characters" });
     }
 
-    const existingReview = await pool.query(
+    await client.query("BEGIN");
+
+    const existingReview = await client.query(
       `
       SELECT user_review_id, user_id, game_id
       FROM user_review
@@ -729,34 +697,48 @@ app.put("/reviews/:reviewId", requireAuth, async (req, res) => {
     );
 
     if (existingReview.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Review not found" });
     }
 
     if (Number(existingReview.rows[0].user_id) !== userId) {
+      await client.query("ROLLBACK");
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    await pool.query(
+    await client.query(
       `
       UPDATE user_review
       SET review_text = $1,
-          score = $2,
-          updated_at = NOW()
+          score = $2
       WHERE user_review_id = $3
       `,
       [reviewText, score, reviewId]
     );
 
-    await updateGameAverageScore(existingReview.rows[0].game_id);
 
-    return res.json({ ok: true, id: reviewId, gameId: existingReview.rows[0].game_id });
+    await client.query("COMMIT");
+
+    return res.json({
+      ok: true,
+      id: reviewId,
+      gameId: existingReview.rows[0].game_id
+    });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("PUT /reviews/:reviewId error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const reviewId = parseInt(req.params.reviewId, 10);
     const userId = Number(req.authUser?.id);
@@ -765,7 +747,9 @@ app.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid review id or user id" });
     }
 
-    const existingReview = await pool.query(
+    await client.query("BEGIN");
+
+    const existingReview = await client.query(
       `
       SELECT user_review_id, user_id, game_id
       FROM user_review
@@ -776,24 +760,42 @@ app.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
     );
 
     if (existingReview.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Review not found" });
     }
 
     if (Number(existingReview.rows[0].user_id) !== userId) {
+      await client.query("ROLLBACK");
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    await pool.query("DELETE FROM user_review WHERE user_review_id = $1", [reviewId]);
-    await updateGameAverageScore(existingReview.rows[0].game_id);
+    await client.query(
+      "DELETE FROM user_review WHERE user_review_id = $1",
+      [reviewId]
+    );
 
-    return res.json({ ok: true, gameId: existingReview.rows[0].game_id });
+
+    await client.query("COMMIT");
+
+    return res.json({
+      ok: true,
+      gameId: existingReview.rows[0].game_id
+    });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("DELETE /reviews/:reviewId error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.post("/reviews/:reviewId/love", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const reviewId = parseInt(req.params.reviewId, 10);
     const userId = Number(req.authUser?.id);
@@ -802,16 +804,19 @@ app.post("/reviews/:reviewId/love", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid review id or user id" });
     }
 
-    const reviewExists = await pool.query(
+    await client.query("BEGIN");
+
+    const reviewExists = await client.query(
       "SELECT 1 FROM user_review WHERE user_review_id = $1 LIMIT 1",
       [reviewId]
     );
 
     if (reviewExists.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Review not found" });
     }
 
-    const existingLove = await pool.query(
+    const existingLove = await client.query(
       `
       SELECT 1
       FROM user_review_like
@@ -824,7 +829,7 @@ app.post("/reviews/:reviewId/love", requireAuth, async (req, res) => {
     let loved = false;
 
     if (existingLove.rowCount > 0) {
-      await pool.query(
+      await client.query(
         `
         DELETE FROM user_review_like
         WHERE user_id = $1 AND user_review_id = $2
@@ -833,7 +838,7 @@ app.post("/reviews/:reviewId/love", requireAuth, async (req, res) => {
       );
     } else {
       loved = true;
-      await pool.query(
+      await client.query(
         `
         INSERT INTO user_review_like (user_id, user_review_id)
         VALUES ($1, $2)
@@ -842,7 +847,7 @@ app.post("/reviews/:reviewId/love", requireAuth, async (req, res) => {
       );
     }
 
-    const countResult = await pool.query(
+    const countResult = await client.query(
       `
       SELECT COUNT(*)::int AS love_count
       FROM user_review_like
@@ -851,14 +856,22 @@ app.post("/reviews/:reviewId/love", requireAuth, async (req, res) => {
       [reviewId]
     );
 
+    await client.query("COMMIT");
+
     return res.json({
       ok: true,
       loved,
       loveCount: Number(countResult.rows[0]?.love_count || 0),
     });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("POST /reviews/:reviewId/love error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -879,6 +892,7 @@ function serializeCommentRow(row) {
     text: row.text,
     date: row.date,
     updatedAt: row.updatedAt,
+    isAdmin: Boolean(row.isAdmin),
     loveCount: Number(row.loveCount || 0),
     lovedByMe: Boolean(row.lovedByMe),
   };
@@ -916,6 +930,7 @@ app.get("/games/:id/comments", async (req, res) => {
         c.content AS text,
         c.comment_date AS date,
         c.updated_at AS "updatedAt",
+        CASE WHEN COALESCE(ua.role, 'user') = 'admin' THEN true ELSE false END AS "isAdmin",
         COALESCE(l.love_count, 0) AS "loveCount",
         COALESCE(my_like.loved_by_me, false) AS "lovedByMe"
       FROM comment c
@@ -945,6 +960,8 @@ app.get("/games/:id/comments", async (req, res) => {
 });
 
 app.post("/reviews/:reviewId/comments", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const reviewId = parseInt(req.params.reviewId, 10);
     const userId = Number(req.authUser?.id);
@@ -958,7 +975,9 @@ app.post("/reviews/:reviewId/comments", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Comment must be at least 3 characters" });
     }
 
-    const reviewResult = await pool.query(
+    await client.query("BEGIN");
+
+    const reviewResult = await client.query(
       `
       SELECT user_review_id
       FROM user_review
@@ -969,10 +988,11 @@ app.post("/reviews/:reviewId/comments", requireAuth, async (req, res) => {
     );
 
     if (reviewResult.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Review not found" });
     }
 
-    const created = await pool.query(
+    const created = await client.query(
       `
       INSERT INTO comment (user_id, user_review_id, parent_comment_id, content, comment_date, updated_at)
       VALUES ($1, $2, NULL, $3, NOW(), NOW())
@@ -981,14 +1001,24 @@ app.post("/reviews/:reviewId/comments", requireAuth, async (req, res) => {
       [userId, reviewId, content]
     );
 
+    await client.query("COMMIT");
+
     return res.status(201).json({ ok: true, id: created.rows[0].id });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("POST /reviews/:reviewId/comments error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.post("/comments/:commentId/replies", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const commentId = parseInt(req.params.commentId, 10);
     const userId = Number(req.authUser?.id);
@@ -1002,7 +1032,9 @@ app.post("/comments/:commentId/replies", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Comment must be at least 3 characters" });
     }
 
-    const parentResult = await pool.query(
+    await client.query("BEGIN");
+
+    const parentResult = await client.query(
       `
       SELECT c.comment_id, c.user_review_id, c.parent_comment_id
       FROM comment c
@@ -1013,16 +1045,18 @@ app.post("/comments/:commentId/replies", requireAuth, async (req, res) => {
     );
 
     if (parentResult.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Comment not found" });
     }
 
     const parentComment = parentResult.rows[0];
 
     if (parentComment.parent_comment_id) {
+      await client.query("ROLLBACK");
       return res.status(400).json({ error: "Replies are limited to one level" });
     }
 
-    const created = await pool.query(
+    const created = await client.query(
       `
       INSERT INTO comment (user_id, user_review_id, parent_comment_id, content, comment_date, updated_at)
       VALUES ($1, $2, $3, $4, NOW(), NOW())
@@ -1031,14 +1065,24 @@ app.post("/comments/:commentId/replies", requireAuth, async (req, res) => {
       [userId, parentComment.user_review_id, commentId, content]
     );
 
+    await client.query("COMMIT");
+
     return res.status(201).json({ ok: true, id: created.rows[0].id });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("POST /comments/:commentId/replies error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.put("/comments/:commentId", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const commentId = parseInt(req.params.commentId, 10);
     const userId = Number(req.authUser?.id);
@@ -1052,7 +1096,9 @@ app.put("/comments/:commentId", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Comment must be at least 3 characters" });
     }
 
-    const existing = await pool.query(
+    await client.query("BEGIN");
+
+    const existing = await client.query(
       `
       SELECT comment_id, user_id
       FROM comment
@@ -1063,32 +1109,43 @@ app.put("/comments/:commentId", requireAuth, async (req, res) => {
     );
 
     if (existing.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Comment not found" });
     }
 
     if (Number(existing.rows[0].user_id) !== userId) {
+      await client.query("ROLLBACK");
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const updated = await pool.query(
+    const updated = await client.query(
       `
       UPDATE comment
-      SET content = $1,
-          updated_at = NOW()
+      SET content = $1
       WHERE comment_id = $2
       RETURNING comment_id AS id
       `,
       [content, commentId]
     );
 
+    await client.query("COMMIT");
+
     return res.json({ ok: true, id: updated.rows[0].id });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("PUT /comments/:commentId error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.delete("/comments/:commentId", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const commentId = parseInt(req.params.commentId, 10);
     const userId = Number(req.authUser?.id);
@@ -1097,7 +1154,9 @@ app.delete("/comments/:commentId", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid comment id or user id" });
     }
 
-    const existing = await pool.query(
+    await client.query("BEGIN");
+
+    const existing = await client.query(
       `
       SELECT comment_id, user_id
       FROM comment
@@ -1108,23 +1167,35 @@ app.delete("/comments/:commentId", requireAuth, async (req, res) => {
     );
 
     if (existing.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Comment not found" });
     }
 
     if (Number(existing.rows[0].user_id) !== userId) {
+      await client.query("ROLLBACK");
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    await pool.query("DELETE FROM comment WHERE comment_id = $1", [commentId]);
+    await client.query("DELETE FROM comment WHERE comment_id = $1", [commentId]);
+
+    await client.query("COMMIT");
 
     return res.json({ ok: true });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("DELETE /comments/:commentId error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.post("/comments/:commentId/love", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const commentId = parseInt(req.params.commentId, 10);
     const userId = Number(req.authUser?.id);
@@ -1133,16 +1204,19 @@ app.post("/comments/:commentId/love", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid comment id or user id" });
     }
 
-    const commentExists = await pool.query(
+    await client.query("BEGIN");
+
+    const commentExists = await client.query(
       "SELECT 1 FROM comment WHERE comment_id = $1 LIMIT 1",
       [commentId]
     );
 
     if (commentExists.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Comment not found" });
     }
 
-    const existingLove = await pool.query(
+    const existingLove = await client.query(
       `
       SELECT 1
       FROM comment_like
@@ -1155,7 +1229,7 @@ app.post("/comments/:commentId/love", requireAuth, async (req, res) => {
     let loved = false;
 
     if (existingLove.rowCount > 0) {
-      await pool.query(
+      await client.query(
         `
         DELETE FROM comment_like
         WHERE user_id = $1 AND comment_id = $2
@@ -1164,7 +1238,7 @@ app.post("/comments/:commentId/love", requireAuth, async (req, res) => {
       );
     } else {
       loved = true;
-      await pool.query(
+      await client.query(
         `
         INSERT INTO comment_like (user_id, comment_id, created_at)
         VALUES ($1, $2, NOW())
@@ -1173,7 +1247,7 @@ app.post("/comments/:commentId/love", requireAuth, async (req, res) => {
       );
     }
 
-    const loveCountResult = await pool.query(
+    const loveCountResult = await client.query(
       `
       SELECT COUNT(*)::int AS love_count
       FROM comment_like
@@ -1182,14 +1256,22 @@ app.post("/comments/:commentId/love", requireAuth, async (req, res) => {
       [commentId]
     );
 
+    await client.query("COMMIT");
+
     return res.json({
       ok: true,
       loved,
       loveCount: Number(loveCountResult.rows[0]?.love_count || 0),
     });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("POST /comments/:commentId/love error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -1200,6 +1282,8 @@ app.post("/comments/:commentId/love", requireAuth, async (req, res) => {
 
 /* Register */
 app.post("/auth/register", async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const { username, email, password } = req.body;
 
@@ -1215,12 +1299,15 @@ app.post("/auth/register", async (req, res) => {
         .json({ error: "Password must be at least 6 characters" });
     }
 
-    const exists = await pool.query(
+    await client.query("BEGIN");
+
+    const exists = await client.query(
       "SELECT 1 FROM user_account WHERE email = $1 LIMIT 1",
       [email]
     );
 
     if (exists.rowCount > 0) {
+      await client.query("ROLLBACK");
       return res.status(409).json({ error: "Email already registered" });
     }
 
@@ -1229,7 +1316,7 @@ app.post("/auth/register", async (req, res) => {
     const avatarStyle = pickRandomAvatarStyle();
     const avatarSeed = username;
 
-    const created = await pool.query(
+    const created = await client.query(
       `
       INSERT INTO user_account
         (username, email, password_hash, join_date, avatar_style, avatar_seed, bio, role)
@@ -1240,8 +1327,9 @@ app.post("/auth/register", async (req, res) => {
       [username, email, passwordHash, avatarStyle, avatarSeed, USER_ROLE]
     );
 
-    const u = created.rows[0];
+    await client.query("COMMIT");
 
+    const u = created.rows[0];
     const token = signToken(u);
 
     return res.status(201).json({
@@ -1258,8 +1346,14 @@ app.post("/auth/register", async (req, res) => {
       },
     });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("POST /auth/register error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -1318,20 +1412,60 @@ app.post("/auth/login", async (req, res) => {
   }
 });
 
-async function updateGameAverageScore(gameId) {
-  await pool.query(
-    `
-    UPDATE game
-    SET avg_score = (
-      SELECT ROUND(AVG(score)::numeric, 1)
-      FROM user_review
-      WHERE game_id = $1
-    )
-    WHERE game_id = $1
-    `,
-    [gameId]
-  );
-}
+
+/*ADMIN WORKING*/
+
+
+app.get("/auth/me", requireAuth, async (req, res) => {
+  try {
+    const userId = Number(req.authUser?.id);
+
+    if (Number.isNaN(userId)) {
+      return res.status(401).json({ error: "Invalid token user" });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        user_id,
+        username,
+        email,
+        join_date,
+        COALESCE(avatar_style, 'adventurer') AS avatar_style,
+        COALESCE(avatar_seed, username) AS avatar_seed,
+        COALESCE(bio, '') AS bio,
+        COALESCE(role, 'user') AS role
+      FROM user_account
+      WHERE user_id = $1
+      LIMIT 1
+      `,
+      [userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = result.rows[0];
+
+    return res.json({
+      user: {
+        id: user.user_id,
+        name: user.username,
+        email: user.email,
+        join_date: user.join_date,
+        avatar_style: user.avatar_style,
+        avatar_seed: user.avatar_seed,
+        bio: user.bio,
+        role: normalizeRole(user.role),
+      },
+    });
+  } catch (err) {
+    console.error("GET /auth/me error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.get("/admin/overview", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -1372,10 +1506,17 @@ app.get("/admin/overview", requireAuth, requireAdmin, async (req, res) => {
           ur.review_text AS text,
           ur.review_date AS date,
           g.title AS "gameTitle",
-          ua.username AS "userName"
+          ua.username AS "userName",
+          CASE
+            WHEN ugpb.user_id IS NOT NULL THEN true
+            ELSE false
+          END AS "isPlayerVerified"
         FROM user_review ur
         JOIN game g ON g.game_id = ur.game_id
         JOIN user_account ua ON ua.user_id = ur.user_id
+        LEFT JOIN user_game_player_badge ugpb
+          ON ugpb.user_id = ur.user_id
+         AND ugpb.game_id = ur.game_id
         ORDER BY ur.review_date DESC
         LIMIT 200
         `
@@ -1392,7 +1533,6 @@ app.get("/admin/overview", requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-
 app.post("/admin/games", requireAuth, requireAdmin, async (req, res) => {
   const client = await pool.connect();
 
@@ -1591,7 +1731,7 @@ app.post("/admin/games", requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     try {
       await client.query("ROLLBACK");
-    } catch (_) {}
+    } catch (_) { }
 
     console.error("POST /admin/games error:", err);
     return res.status(500).json({ error: err.message });
@@ -1858,7 +1998,7 @@ app.put("/admin/games/:gameId", requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     try {
       await client.query("ROLLBACK");
-    } catch (_) {}
+    } catch (_) { }
 
     console.error("PUT /admin/games/:gameId error:", err);
     return res.status(500).json({ error: err.message });
@@ -1868,6 +2008,8 @@ app.put("/admin/games/:gameId", requireAuth, requireAdmin, async (req, res) => {
 });
 
 app.delete("/admin/games/:gameId", requireAuth, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const gameId = parseInt(req.params.gameId, 10);
 
@@ -1875,7 +2017,9 @@ app.delete("/admin/games/:gameId", requireAuth, requireAdmin, async (req, res) =
       return res.status(400).json({ error: "Invalid game id" });
     }
 
-    const deleted = await pool.query(
+    await client.query("BEGIN");
+
+    const deleted = await client.query(
       `
       DELETE FROM game
       WHERE game_id = $1
@@ -1885,43 +2029,101 @@ app.delete("/admin/games/:gameId", requireAuth, requireAdmin, async (req, res) =
     );
 
     if (deleted.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Game not found" });
     }
 
+    await client.query("COMMIT");
+
     return res.json({ ok: true });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("DELETE /admin/games/:gameId error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
-app.delete("/admin/reviews/:reviewId", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const reviewId = parseInt(req.params.reviewId, 10);
+app.post("/admin/player-badges", requireAuth, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
 
-    if (Number.isNaN(reviewId)) {
-      return res.status(400).json({ error: "Invalid review id" });
+  try {
+    const userId = parseInt(req.body.userId, 10);
+    const gameId = parseInt(req.body.gameId, 10);
+    const grantedBy = Number(req.authUser?.id);
+    const note = String(req.body.note || "").trim();
+
+    if (Number.isNaN(userId) || Number.isNaN(gameId) || Number.isNaN(grantedBy)) {
+      return res.status(400).json({ error: "Invalid user id or game id" });
     }
 
-    const deleted = await pool.query(
+    await client.query("BEGIN");
+
+    await client.query(
       `
-      DELETE FROM user_review
-      WHERE user_review_id = $1
-      RETURNING game_id
+      CALL sp_assign_player_badge($1, $2, $3, $4)
       `,
-      [reviewId]
+      [userId, gameId, grantedBy, note || null]
     );
 
-    if (deleted.rowCount === 0) {
-      return res.status(404).json({ error: "Review not found" });
-    }
-
-    await updateGameAverageScore(deleted.rows[0].game_id);
+    await client.query("COMMIT");
 
     return res.json({ ok: true });
   } catch (err) {
-    console.error("DELETE /admin/reviews/:reviewId error:", err);
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) {}
+
+    console.error("POST /admin/player-badges error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete("/admin/player-badges/:userId/:gameId", requireAuth, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    const gameId = parseInt(req.params.gameId, 10);
+
+    if (Number.isNaN(userId) || Number.isNaN(gameId)) {
+      return res.status(400).json({ error: "Invalid user id or game id" });
+    }
+
+    await client.query("BEGIN");
+
+    const deleted = await client.query(
+      `
+      DELETE FROM user_game_player_badge
+      WHERE user_id = $1 AND game_id = $2
+      RETURNING user_id, game_id
+      `,
+      [userId, gameId]
+    );
+
+    if (deleted.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Player badge not found" });
+    }
+
+    await client.query("COMMIT");
+
+    return res.json({ ok: true });
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
+    console.error("DELETE /admin/player-badges/:userId/:gameId error:", err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -1976,50 +2178,80 @@ app.get("/home/reviews", async (req, res) => {
     const authUser = getOptionalAuthUser(req);
     const currentUserId = Number(authUser?.id || null);
 
-    const result = await pool.query(`
-      SELECT 
-        ur.user_review_id AS id,
-        ur.user_id,
-        u.username AS user,
-        COALESCE(u.avatar_style, 'adventurer') AS avatar_style,
-        COALESCE(u.avatar_seed, u.username) AS avatar_seed,
-        ur.game_id AS "gameId",
-        g.title AS game,
-        ur.review_text AS text,
-        ur.score,
-        ur.review_date AS date,
-        g.accent_color AS accent,
-        COALESCE(l.love_count, 0) AS "loveCount",
-        COALESCE(my_like.loved_by_me, false) AS "lovedByMe"
-      FROM user_review ur
-      JOIN user_account u ON ur.user_id = u.user_id
-      JOIN game g ON ur.game_id = g.game_id
-      LEFT JOIN (
-        SELECT user_review_id, COUNT(*)::int AS love_count
-        FROM user_review_like
-        GROUP BY user_review_id
-      ) l ON l.user_review_id = ur.user_review_id
-      LEFT JOIN (
-        SELECT user_review_id, true AS loved_by_me
-        FROM user_review_like
-        WHERE user_id = $1
-      ) my_like ON my_like.user_review_id = ur.user_review_id
-      ORDER BY ur.review_date DESC
-      LIMIT 5
-    `,
-    [currentUserId || null]);
+    const result = await pool.query(
+      `
+  SELECT 
+    ur.user_review_id AS id,
+    ur.user_id,
+    u.username AS user,
+    COALESCE(u.avatar_style, 'adventurer') AS avatar_style,
+    COALESCE(u.avatar_seed, u.username) AS avatar_seed,
+    ur.game_id AS "gameId",
+    g.title AS game,
+    ur.review_text AS text,
+    ur.score,
+    ur.review_date AS date,
+    g.accent_color AS accent,
+    COALESCE(l.love_count, 0) AS "loveCount",
+    COALESCE(my_like.loved_by_me, false) AS "lovedByMe",
+    CASE WHEN COALESCE(u.role, 'user') = 'admin' THEN true ELSE false END AS "isAdmin",
+    CASE WHEN COALESCE(u.role, 'user') = 'admin' THEN true ELSE false END AS "isAdmin",
+    CASE WHEN ugpb.user_id IS NOT NULL THEN true ELSE false END AS "isVerifiedPlayer",
+    CASE WHEN purchased.user_id IS NOT NULL THEN true ELSE false END AS "isPurchased",
+    CASE
+      WHEN ugpb.user_id IS NOT NULL THEN 'verified_player'
+      WHEN purchased.user_id IS NOT NULL THEN 'purchased'
+      ELSE NULL
+    END AS badge
+  FROM user_review ur
+  JOIN user_account u
+    ON ur.user_id = u.user_id
+  JOIN game g
+    ON ur.game_id = g.game_id
+  LEFT JOIN (
+    SELECT user_review_id, COUNT(*)::int AS love_count
+    FROM user_review_like
+    GROUP BY user_review_id
+  ) l
+    ON l.user_review_id = ur.user_review_id
+  LEFT JOIN (
+    SELECT user_review_id, true AS loved_by_me
+    FROM user_review_like
+    WHERE user_id = $1
+  ) my_like
+    ON my_like.user_review_id = ur.user_review_id
+  LEFT JOIN user_game_player_badge ugpb
+    ON ugpb.user_id = ur.user_id
+   AND ugpb.game_id = ur.game_id
+  LEFT JOIN (
+    SELECT DISTINCT co.user_id, oi.game_id
+    FROM customer_order co
+    JOIN order_item oi ON oi.order_id = co.order_id
+    WHERE co.order_status = 'confirmed'
+  ) purchased
+    ON purchased.user_id = ur.user_id
+   AND purchased.game_id = ur.game_id
+  ORDER BY ur.review_date DESC
+  LIMIT 5
+  `,
+      [currentUserId || null]
+    );
 
     const reviewsWithAvatar = result.rows.map((r) => ({
       ...r,
       avatar: buildDicebearAvatar(r.avatar_style, r.avatar_seed || r.user),
+      isAdmin: Boolean(r.isAdmin),
+      isPurchased: Boolean(r.isPurchased),
+      isPlayerVerified: Boolean(r.isPlayerVerified),
+      badge: r.badge || null,
     }));
 
     res.json(reviewsWithAvatar);
   } catch (err) {
+    console.error("GET /home/reviews error:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
 /* =========================
    WISHLIST
    ========================= */
@@ -2096,6 +2328,8 @@ app.get("/wishlist/:userId", requireAuth, requireSameUser, async (req, res) => {
 });
 
 app.post("/wishlist/:userId", requireAuth, requireSameUser, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const userId = parseInt(req.params.userId, 10);
     const gameId = parseInt(req.body.gameId, 10);
@@ -2104,25 +2338,29 @@ app.post("/wishlist/:userId", requireAuth, requireSameUser, async (req, res) => 
       return res.status(400).json({ error: "Invalid user id or game id" });
     }
 
-    const userExists = await pool.query(
+    await client.query("BEGIN");
+
+    const userExists = await client.query(
       "SELECT 1 FROM user_account WHERE user_id = $1 LIMIT 1",
       [userId]
     );
 
     if (userExists.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "User not found" });
     }
 
-    const gameExists = await pool.query(
+    const gameExists = await client.query(
       "SELECT 1 FROM game WHERE game_id = $1 LIMIT 1",
       [gameId]
     );
 
     if (gameExists.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Game not found" });
     }
 
-    const inserted = await pool.query(
+    const inserted = await client.query(
       `
       INSERT INTO wishlist (user_id, game_id, added_date)
       VALUES ($1, $2, NOW())
@@ -2132,6 +2370,8 @@ app.post("/wishlist/:userId", requireAuth, requireSameUser, async (req, res) => 
       [userId, gameId]
     );
 
+    await client.query("COMMIT");
+
     return res.status(201).json({
       ok: true,
       message:
@@ -2140,12 +2380,20 @@ app.post("/wishlist/:userId", requireAuth, requireSameUser, async (req, res) => 
           : "Game added to wishlist"
     });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("POST /wishlist/:userId error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.delete("/wishlist/:userId/:gameId", requireAuth, requireSameUser, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const userId = parseInt(req.params.userId, 10);
     const gameId = parseInt(req.params.gameId, 10);
@@ -2154,7 +2402,9 @@ app.delete("/wishlist/:userId/:gameId", requireAuth, requireSameUser, async (req
       return res.status(400).json({ error: "Invalid user id or game id" });
     }
 
-    const deleted = await pool.query(
+    await client.query("BEGIN");
+
+    const deleted = await client.query(
       `
       DELETE FROM wishlist
       WHERE user_id = $1 AND game_id = $2
@@ -2164,13 +2414,22 @@ app.delete("/wishlist/:userId/:gameId", requireAuth, requireSameUser, async (req
     );
 
     if (deleted.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Wishlist item not found" });
     }
 
+    await client.query("COMMIT");
+
     return res.json({ ok: true, message: "Game removed from wishlist" });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("DELETE /wishlist/:userId/:gameId error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 /* =========================
@@ -2211,6 +2470,173 @@ app.get("/profile/:id", requireAuth, requireSameUser, async (req, res) => {
   } catch (err) {
     console.error("GET /profile/:id error:", err);
     return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/profile/:id", requireAuth, requireSameUser, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const userId = parseInt(req.params.id, 10);
+    const username = String(req.body.username || "").trim();
+    const bio = String(req.body.bio || "");
+    const avatarStyle = String(req.body.avatar_style || "adventurer").trim();
+    const avatarSeed = String(req.body.avatar_seed || username).trim() || username;
+
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    if (!username) {
+      return res.status(400).json({ error: "Username is required" });
+    }
+
+    if (username.length < 3) {
+      return res.status(400).json({ error: "Username must be at least 3 characters" });
+    }
+
+    if (bio.length > 300) {
+      return res.status(400).json({ error: "Bio must be at most 300 characters" });
+    }
+
+    if (!AVATAR_STYLES.includes(avatarStyle)) {
+      return res.status(400).json({ error: "Invalid avatar style" });
+    }
+
+    await client.query("BEGIN");
+
+    const duplicateUser = await client.query(
+      `
+      SELECT 1
+      FROM user_account
+      WHERE LOWER(username) = LOWER($1)
+        AND user_id <> $2
+      LIMIT 1
+      `,
+      [username, userId]
+    );
+
+    if (duplicateUser.rowCount > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Username already taken" });
+    }
+
+    const updated = await client.query(
+      `
+      UPDATE user_account
+      SET
+        username = $1,
+        bio = $2,
+        avatar_style = $3,
+        avatar_seed = $4
+      WHERE user_id = $5
+      RETURNING
+        user_id AS id,
+        username AS name,
+        email,
+        join_date,
+        COALESCE(avatar_style, 'adventurer') AS avatar_style,
+        COALESCE(avatar_seed, username) AS avatar_seed,
+        COALESCE(bio, '') AS bio,
+        COALESCE(role, 'user') AS role
+      `,
+      [username, bio, avatarStyle, avatarSeed, userId]
+    );
+
+    if (updated.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    await client.query("COMMIT");
+
+    return res.json({
+      ok: true,
+      user: updated.rows[0],
+    });
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) {}
+
+    console.error("PUT /profile/:id error:", err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.put("/profile/:id/password", requireAuth, requireSameUser, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const userId = parseInt(req.params.id, 10);
+    const currentPassword = String(req.body.currentPassword || "");
+    const newPassword = String(req.body.newPassword || "");
+
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "currentPassword and newPassword are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "New password must be at least 6 characters" });
+    }
+
+    await client.query("BEGIN");
+
+    const result = await client.query(
+      `
+      SELECT user_id, password_hash
+      FROM user_account
+      WHERE user_id = $1
+      LIMIT 1
+      `,
+      [userId]
+    );
+
+    if (result.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = result.rows[0];
+    const ok = await bcrypt.compare(currentPassword, user.password_hash || "");
+
+    if (!ok) {
+      await client.query("ROLLBACK");
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+
+    await client.query(
+      `
+      UPDATE user_account
+      SET password_hash = $1
+      WHERE user_id = $2
+      `,
+      [newPasswordHash, userId]
+    );
+
+    await client.query("COMMIT");
+
+    return res.json({
+      ok: true,
+      message: "Password updated successfully",
+    });
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) {}
+
+    console.error("PUT /profile/:id/password error:", err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -2280,118 +2706,7 @@ app.get("/shop", async (req, res) => {
   }
 });
 
-async function getOrCreateCart(userId) {
-  const existing = await pool.query(
-    "SELECT cart_id FROM cart WHERE user_id = $1 ORDER BY cart_id ASC LIMIT 1",
-    [userId]
-  );
 
-  if (existing.rowCount > 0) {
-    return existing.rows[0].cart_id;
-  }
-
-  const created = await pool.query(
-    "INSERT INTO cart (user_id) VALUES ($1) RETURNING cart_id",
-    [userId]
-  );
-
-  return created.rows[0].cart_id;
-}
-
-async function getCartItemsForCheckout(userId) {
-  const result = await pool.query(
-    `
-    SELECT
-      c.cart_id,
-      ci.listing_id,
-      ci.quantity,
-      gsl.price,
-      gsl.currency,
-      g.game_id,
-      g.title,
-      g.cover_url AS cover,
-      s.name AS store_name,
-      (ci.quantity * gsl.price) AS subtotal
-    FROM cart c
-    JOIN cart_item ci ON c.cart_id = ci.cart_id
-    JOIN game_store_listing gsl ON ci.listing_id = gsl.listing_id
-    JOIN game g ON gsl.game_id = g.game_id
-    LEFT JOIN store s ON gsl.store_id = s.store_id
-    WHERE c.user_id = $1
-    ORDER BY ci.listing_id ASC
-    `,
-    [userId]
-  );
-
-  return result.rows.map((row) => ({
-    ...row,
-    price: Number(row.price || 0),
-    subtotal: Number(row.subtotal || 0),
-    quantity: Number(row.quantity || 0),
-  }));
-}
-
-async function buildSingleOrder(orderId, userId) {
-  const orderResult = await pool.query(
-    `
-    SELECT
-      o.order_id,
-      o.user_id,
-      o.total_amount,
-      o.total_items,
-      o.currency,
-      o.payment_method,
-      o.customer_name,
-      o.customer_email,
-      o.billing_address,
-      o.order_status,
-      o.created_at
-    FROM customer_order o
-    WHERE o.order_id = $1 AND o.user_id = $2
-    LIMIT 1
-    `,
-    [orderId, userId]
-  );
-
-  if (orderResult.rows.length === 0) {
-    return null;
-  }
-
-  const itemsResult = await pool.query(
-    `
-    SELECT
-      oi.order_item_id,
-      oi.order_id,
-      oi.listing_id,
-      oi.game_id,
-      oi.quantity,
-      oi.unit_price,
-      oi.subtotal,
-      g.title,
-      g.cover_url AS cover,
-      s.name AS store_name
-    FROM order_item oi
-    JOIN game g ON oi.game_id = g.game_id
-    LEFT JOIN game_store_listing gsl ON oi.listing_id = gsl.listing_id
-    LEFT JOIN store s ON gsl.store_id = s.store_id
-    WHERE oi.order_id = $1
-    ORDER BY oi.order_item_id ASC
-    `,
-    [orderId]
-  );
-
-  return {
-    ...orderResult.rows[0],
-    total_amount: Number(orderResult.rows[0].total_amount || 0),
-    total_items: Number(orderResult.rows[0].total_items || 0),
-    items: itemsResult.rows.map((row) => ({
-      ...row,
-      quantity: Number(row.quantity || 0),
-      unit_price: Number(row.unit_price || 0),
-      subtotal: Number(row.subtotal || 0),
-    })),
-  };
-}
 
 /* =========================
    CART
@@ -2465,6 +2780,8 @@ app.get("/cart/:userId", requireAuth, requireSameUser, async (req, res) => {
 });
 
 app.post("/cart/:userId", requireAuth, requireSameUser, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const userId = parseInt(req.params.userId, 10);
     const listingId = parseInt(req.body.listingId, 10);
@@ -2481,27 +2798,50 @@ app.post("/cart/:userId", requireAuth, requireSameUser, async (req, res) => {
         .json({ error: "Invalid user id, listing id, or quantity" });
     }
 
-    const userExists = await pool.query(
+    await client.query("BEGIN");
+
+    const userExists = await client.query(
       "SELECT 1 FROM user_account WHERE user_id = $1 LIMIT 1",
       [userId]
     );
 
     if (userExists.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "User not found" });
     }
 
-    const listingExists = await pool.query(
+    const listingExists = await client.query(
       "SELECT 1 FROM game_store_listing WHERE listing_id = $1 LIMIT 1",
       [listingId]
     );
 
     if (listingExists.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Listing not found" });
     }
 
-    const cartId = await getOrCreateCart(userId);
+    let cartResult = await client.query(
+      "SELECT cart_id FROM cart WHERE user_id = $1 ORDER BY cart_id ASC LIMIT 1",
+      [userId]
+    );
 
-    await pool.query(
+    let cartId;
+
+    if (cartResult.rowCount > 0) {
+      cartId = cartResult.rows[0].cart_id;
+    } else {
+      const createdCart = await client.query(
+        `
+        INSERT INTO cart (user_id, created_at)
+        VALUES ($1, NOW())
+        RETURNING cart_id
+        `,
+        [userId]
+      );
+      cartId = createdCart.rows[0].cart_id;
+    }
+
+    await client.query(
       `
       INSERT INTO cart_item (cart_id, listing_id, quantity)
       VALUES ($1, $2, $3)
@@ -2511,14 +2851,24 @@ app.post("/cart/:userId", requireAuth, requireSameUser, async (req, res) => {
       [cartId, listingId, quantity]
     );
 
+    await client.query("COMMIT");
+
     return res.status(201).json({ ok: true });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("POST /cart/:userId error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.patch("/cart/:userId/:listingId", requireAuth, requireSameUser, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const userId = parseInt(req.params.userId, 10);
     const listingId = parseInt(req.params.listingId, 10);
@@ -2530,27 +2880,31 @@ app.patch("/cart/:userId/:listingId", requireAuth, requireSameUser, async (req, 
         .json({ error: "Invalid user id, listing id, or quantity" });
     }
 
-    const cartResult = await pool.query(
+    await client.query("BEGIN");
+
+    const cartResult = await client.query(
       "SELECT cart_id FROM cart WHERE user_id = $1 ORDER BY cart_id ASC LIMIT 1",
       [userId]
     );
 
     if (cartResult.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Cart not found" });
     }
 
     const cartId = cartResult.rows[0].cart_id;
 
     if (quantity <= 0) {
-      await pool.query(
+      await client.query(
         "DELETE FROM cart_item WHERE cart_id = $1 AND listing_id = $2",
         [cartId, listingId]
       );
 
+      await client.query("COMMIT");
       return res.json({ ok: true });
     }
 
-    const updated = await pool.query(
+    const updated = await client.query(
       `
       UPDATE cart_item
       SET quantity = $3
@@ -2560,17 +2914,29 @@ app.patch("/cart/:userId/:listingId", requireAuth, requireSameUser, async (req, 
     );
 
     if (updated.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Cart item not found" });
     }
 
+    await client.query("COMMIT");
+
     return res.json({ ok: true });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("PATCH /cart/:userId/:listingId error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
+
 app.delete("/cart/:userId/:listingId", requireAuth, requireSameUser, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const userId = parseInt(req.params.userId, 10);
     const listingId = parseInt(req.params.listingId, 10);
@@ -2579,24 +2945,40 @@ app.delete("/cart/:userId/:listingId", requireAuth, requireSameUser, async (req,
       return res.status(400).json({ error: "Invalid user id or listing id" });
     }
 
-    const cartResult = await pool.query(
+    await client.query("BEGIN");
+
+    const cartResult = await client.query(
       "SELECT cart_id FROM cart WHERE user_id = $1 ORDER BY cart_id ASC LIMIT 1",
       [userId]
     );
 
     if (cartResult.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Cart not found" });
     }
 
-    await pool.query(
-      "DELETE FROM cart_item WHERE cart_id = $1 AND listing_id = $2",
+    const deleted = await client.query(
+      "DELETE FROM cart_item WHERE cart_id = $1 AND listing_id = $2 RETURNING listing_id",
       [cartResult.rows[0].cart_id, listingId]
     );
 
+    if (deleted.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Cart item not found" });
+    }
+
+    await client.query("COMMIT");
+
     return res.json({ ok: true });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
     console.error("DELETE /cart/:userId/:listingId error:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -2696,101 +3078,38 @@ app.post("/checkout/:userId", requireAuth, requireSameUser, async (req, res) => 
       return res.status(404).json({ error: "User not found" });
     }
 
-    const cartItemsResult = await client.query(
+    const callResult = await client.query(
       `
-      SELECT
-        c.cart_id,
-        ci.listing_id,
-        ci.quantity,
-        gsl.price,
-        gsl.currency,
-        g.game_id
-      FROM cart c
-      JOIN cart_item ci ON c.cart_id = ci.cart_id
-      JOIN game_store_listing gsl ON ci.listing_id = gsl.listing_id
-      JOIN game g ON gsl.game_id = g.game_id
-      WHERE c.user_id = $1
-      ORDER BY ci.listing_id ASC
+      CALL sp_checkout_cart($1, $2, $3, $4, $5, $6)
       `,
-      [userId]
+      [userId, customerName, customerEmail, billingAddress, paymentMethod, null]
     );
 
-    const cartItems = cartItemsResult.rows.map((row) => ({
-      ...row,
-      quantity: Number(row.quantity || 0),
-      price: Number(row.price || 0),
-    }));
+    let orderId = null;
 
-    if (cartItems.length === 0) {
-      await client.query("ROLLBACK");
-      return res.status(400).json({ error: "Cart is empty" });
+    if (callResult.rows && callResult.rows.length > 0) {
+      orderId = callResult.rows[0].p_order_id ?? callResult.rows[0].order_id ?? null;
     }
 
-    const totalAmount = cartItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
-    const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-    const currency = cartItems[0].currency || "USD";
-
-    const orderInsert = await client.query(
-      `
-      INSERT INTO customer_order (
-        user_id,
-        total_amount,
-        total_items,
-        currency,
-        payment_method,
-        customer_name,
-        customer_email,
-        billing_address,
-        order_status,
-        created_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'confirmed', NOW())
-      RETURNING order_id
-      `,
-      [
-        userId,
-        totalAmount,
-        totalItems,
-        currency,
-        paymentMethod,
-        customerName,
-        customerEmail,
-        billingAddress,
-      ]
-    );
-
-    const orderId = orderInsert.rows[0].order_id;
-
-    for (const item of cartItems) {
-      const subtotal = item.quantity * item.price;
-
-      await client.query(
+    if (!orderId) {
+      const latestOrder = await client.query(
         `
-        INSERT INTO order_item (
-          order_id,
-          listing_id,
-          game_id,
-          quantity,
-          unit_price,
-          subtotal
-        )
-        VALUES ($1, $2, $3, $4, $5, $6)
-        `,
-        [orderId, item.listing_id, item.game_id, item.quantity, item.price, subtotal]
-      );
-    }
-
-    await client.query(
-      `
-      DELETE FROM cart_item
-      WHERE cart_id IN (
-        SELECT cart_id
-        FROM cart
+        SELECT order_id
+        FROM customer_order
         WHERE user_id = $1
-      )
-      `,
-      [userId]
-    );
+        ORDER BY created_at DESC, order_id DESC
+        LIMIT 1
+        `,
+        [userId]
+      );
+
+      if (latestOrder.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ error: "Order was not created" });
+      }
+
+      orderId = latestOrder.rows[0].order_id;
+    }
 
     await client.query("COMMIT");
 

@@ -30,6 +30,60 @@ function statusToneClass(tone) {
   return "comment-thread__status";
 }
 
+function renderCommentAdminBadge(comment) {
+  if (!comment?.isAdmin) return null;
+
+  return (
+    <span
+      title="GameZone Admin"
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "3px 8px 3px 5px",
+        borderRadius: 999,
+        overflow: "hidden",
+        whiteSpace: "nowrap",
+        fontSize: 8,
+        fontWeight: 900,
+        letterSpacing: "0.32px",
+        textTransform: "uppercase",
+        lineHeight: 1,
+        color: "#ffe9c7",
+        background:
+          "linear-gradient(135deg, rgba(30,10,16,0.95), rgba(72,22,34,0.92) 44%, rgba(122,82,28,0.80) 100%)",
+        border: "1px solid rgba(228,181,91,0.30)",
+        boxShadow:
+          "0 6px 14px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.07)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+      }}
+    >
+      <span
+        style={{
+          width: 14,
+          height: 14,
+          minWidth: 14,
+          borderRadius: "50%",
+          display: "grid",
+          placeItems: "center",
+          fontSize: 7,
+          fontWeight: 900,
+          color: "#2b1403",
+          background:
+            "radial-gradient(circle at 30% 30%, #fff4d8, #efc878 46%, #c68b2e 74%, #74460f 100%)",
+          border: "1px solid rgba(255,255,255,0.16)",
+        }}
+      >
+        ♛
+      </span>
+
+      <span>Admin</span>
+    </span>
+  );
+}
+
 export default function CommentThread({
   review,
   comments = [],
@@ -227,6 +281,7 @@ export default function CommentThread({
             <div>
               <div className="comment-thread__authorRow">
                 <strong>{comment.user}</strong>
+                {renderCommentAdminBadge(comment)}
                 {isEdited(comment) ? <span className="comment-thread__edited">Edited</span> : null}
               </div>
               <div className="comment-thread__meta">{formatCommentDate(comment.date)}</div>
