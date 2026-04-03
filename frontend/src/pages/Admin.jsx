@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { authHeader } from "../utils/auth";
+import { PlayerStatusBadge } from "../components/PremiumBadge";
 
 const API_BASE = "http://localhost:4000";
 
@@ -51,14 +52,6 @@ function trendLabel(delta, suffix = "") {
   const arrow = rounded > 0 ? "↑" : "↓";
   const sign = rounded > 0 ? "+" : "";
   return `${arrow} ${sign}${rounded.toFixed(1)}${suffix}`;
-}
-
-function trendTone(delta) {
-  const rounded = Number.isFinite(delta) ? Number(delta.toFixed(1)) : 0;
-
-  if (rounded > 0) return "rgba(153,255,214,0.95)";
-  if (rounded < 0) return "rgba(255,168,188,0.96)";
-  return "rgba(231,233,241,0.78)";
 }
 
 export default function Admin() {
@@ -931,11 +924,11 @@ export default function Admin() {
                       </td>
 
                       <td className="adminTableCell">
-                        {review.isPlayerVerified ? (
-                          <span className="adminBadge success">Player</span>
-                        ) : (
-                          <span className="adminBadge info">No badge</span>
-                        )}
+                        <PlayerStatusBadge
+                          isPlayerVerified={Boolean(review.isPlayerVerified)}
+                          size="table"
+                          shimmer={false}
+                        />
                       </td>
 
                       <td className="adminTableCell">

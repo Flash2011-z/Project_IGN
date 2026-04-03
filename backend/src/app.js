@@ -81,13 +81,44 @@ async function ensureUserAccountAdminRoleColumn() {
   }
 }
 
-const adminRoleReady = ensureUserAccountAdminRoleColumn().catch((err) => {
-  console.error("Failed to ensure admin role column:", err);
+async function ensureUserGamePlayerBadgeTable() {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_game_player_badge (
+        user_id INT NOT NULL REFERENCES user_account(user_id) ON DELETE CASCADE,
+        game_id INT NOT NULL REFERENCES game(game_id) ON DELETE CASCADE,
+        awarded_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, game_id)
+      )
+    `);
+
+    await client.query("COMMIT");
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+const startupSchemaReady = Promise.all([
+  ensureUserAccountAdminRoleColumn(),
+  ensureUserGamePlayerBadgeTable(),
+]).catch((err) => {
+  console.error("Failed to ensure startup schema:", err);
+  throw err;
 });
 
 app.use(async (req, res, next) => {
   try {
-    await adminRoleReady;
+    await startupSchemaReady;
     next();
   } catch (err) {
     next(err);
@@ -2054,20 +2085,41 @@ app.post("/admin/player-badges", requireAuth, requireAdmin, async (req, res) => 
   try {
     const userId = parseInt(req.body.userId, 10);
     const gameId = parseInt(req.body.gameId, 10);
-    const grantedBy = Number(req.authUser?.id);
-    const note = String(req.body.note || "").trim();
 
-    if (Number.isNaN(userId) || Number.isNaN(gameId) || Number.isNaN(grantedBy)) {
+    if (Number.isNaN(userId) || Number.isNaN(gameId)) {
       return res.status(400).json({ error: "Invalid user id or game id" });
     }
 
     await client.query("BEGIN");
 
+    const userExists = await client.query(
+      "SELECT 1 FROM user_account WHERE user_id = $1 LIMIT 1",
+      [userId]
+    );
+
+    if (userExists.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const gameExists = await client.query(
+      "SELECT 1 FROM game WHERE game_id = $1 LIMIT 1",
+      [gameId]
+    );
+
+    if (gameExists.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Game not found" });
+    }
+
     await client.query(
       `
-      CALL sp_assign_player_badge($1, $2, $3, $4)
+      INSERT INTO user_game_player_badge (user_id, game_id, awarded_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id, game_id)
+      DO UPDATE SET awarded_at = EXCLUDED.awarded_at
       `,
-      [userId, gameId, grantedBy, note || null]
+      [userId, gameId]
     );
 
     await client.query("COMMIT");
@@ -2194,7 +2246,6 @@ app.get("/home/reviews", async (req, res) => {
     g.accent_color AS accent,
     COALESCE(l.love_count, 0) AS "loveCount",
     COALESCE(my_like.loved_by_me, false) AS "lovedByMe",
-    CASE WHEN COALESCE(u.role, 'user') = 'admin' THEN true ELSE false END AS "isAdmin",
     CASE WHEN COALESCE(u.role, 'user') = 'admin' THEN true ELSE false END AS "isAdmin",
     CASE WHEN ugpb.user_id IS NOT NULL THEN true ELSE false END AS "isVerifiedPlayer",
     CASE WHEN purchased.user_id IS NOT NULL THEN true ELSE false END AS "isPurchased",

@@ -10,9 +10,38 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT
-        COALESCE(ROUND(AVG(ur.score)::numeric, 1), 0) AS avg_score,
+        COALESCE(
+            ROUND(
+                (
+                    SUM(
+                        ur.score *
+                        CASE
+                            WHEN COALESCE(ua.role, 'user') = 'admin' OR ugpb.user_id IS NOT NULL THEN 1.5
+                            ELSE 1.0
+                        END
+                    )::numeric
+                    /
+                    NULLIF(
+                        SUM(
+                            CASE
+                                WHEN COALESCE(ua.role, 'user') = 'admin' OR ugpb.user_id IS NOT NULL THEN 1.5
+                                ELSE 1.0
+                            END
+                        )::numeric,
+                        0
+                    )
+                ),
+                1
+            ),
+            0
+        ) AS avg_score,
         COUNT(*)::INT AS review_count
     FROM user_review ur
+    LEFT JOIN user_account ua
+        ON ua.user_id = ur.user_id
+    LEFT JOIN user_game_player_badge ugpb
+        ON ugpb.user_id = ur.user_id
+       AND ugpb.game_id = ur.game_id
     WHERE ur.game_id = p_game_id;
 END;
 $$;

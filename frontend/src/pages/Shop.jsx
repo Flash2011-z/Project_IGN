@@ -61,7 +61,7 @@ function normalizePurchaseUrl(value) {
   }
 
   // Only auto-prefix plain host/path style inputs.
-  if (/^[\w.-]+(?:\:[0-9]+)?(?:\/.*)?$/i.test(raw)) {
+  if (/^[\w.-]+(?::[0-9]+)?(?:\/.*)?$/i.test(raw)) {
     const normalized = `https://${raw}`;
     return isBlockedPlaceholderUrl(normalized) ? "" : normalized;
   }

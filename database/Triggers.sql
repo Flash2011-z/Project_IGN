@@ -13,9 +13,38 @@ BEGIN
 
     UPDATE game
     SET avg_score = (
-        SELECT ROUND(AVG(score)::numeric, 1)
-        FROM user_review
-        WHERE game_id = target_game_id
+        SELECT COALESCE(
+            ROUND(
+                (
+                    SUM(
+                        ur.score *
+                        CASE
+                            WHEN COALESCE(ua.role, 'user') = 'admin' OR ugpb.user_id IS NOT NULL THEN 1.5
+                            ELSE 1.0
+                        END
+                    )::numeric
+                    /
+                    NULLIF(
+                        SUM(
+                            CASE
+                                WHEN COALESCE(ua.role, 'user') = 'admin' OR ugpb.user_id IS NOT NULL THEN 1.5
+                                ELSE 1.0
+                            END
+                        )::numeric,
+                        0
+                    )
+                ),
+                1
+            ),
+            0
+        )
+        FROM user_review ur
+        LEFT JOIN user_account ua
+            ON ua.user_id = ur.user_id
+        LEFT JOIN user_game_player_badge ugpb
+            ON ugpb.user_id = ur.user_id
+           AND ugpb.game_id = ur.game_id
+        WHERE ur.game_id = target_game_id
     )
     WHERE game_id = target_game_id;
 

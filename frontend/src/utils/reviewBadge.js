@@ -1,43 +1,91 @@
-export function getReviewBadgeMeta(review) {
-  const badge = review?.badge || null;
-
-  if (badge === "verified_player") {
-    return {
-      label: "Verified Player",
-      title: "GameZone has verified play activity for this reviewer on this game.",
-      style: {
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "4px 10px",
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 900,
-        color: "#06131d",
-        background: "linear-gradient(135deg, #7dd3fc, #38bdf8)",
-        border: "1px solid rgba(255,255,255,0.18)",
-      },
-    };
+function normalizeSize(size) {
+  const value = String(size || "default").trim().toLowerCase();
+  if (value === "compact" || value === "table" || value === "default") {
+    return value;
   }
+  return "default";
+}
 
-  if (badge === "purchased") {
-    return {
-      label: "Purchased",
-      title: "This reviewer purchased this game through GameZone.",
-      style: {
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "4px 10px",
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 900,
-        color: "#f8fafc",
-        background: "rgba(255,255,255,0.08)",
-        border: "1px solid rgba(255,255,255,0.16)",
-      },
-    };
-  }
+function buildClassName(variant, size, shimmer) {
+  return [
+    "premiumBadge",
+    `premiumBadge--${variant}`,
+    `premiumBadge--${normalizeSize(size)}`,
+    shimmer ? "premiumBadge--shimmer" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
+function getVariantFromReview(review) {
+  if (review?.isAdmin) return "admin";
+  if (review?.badge === "verified_player") return "verified_player";
+  if (review?.badge === "purchased") return "purchased";
   return null;
+}
+
+export function getReviewBadgeMeta(review, options = {}) {
+  const variant = getVariantFromReview(review);
+
+  if (!variant) return null;
+
+  const size = options.size || "default";
+  const shimmer = options.shimmer !== false;
+
+  if (variant === "admin") {
+    return {
+      variant,
+      icon: "♚",
+      label: "Admin",
+      title: "GameZone Admin",
+      ariaLabel: "Admin badge",
+      className: buildClassName(variant, size, shimmer),
+    };
+  }
+
+  if (variant === "verified_player") {
+    return {
+      variant,
+      icon: "✦",
+      label: "Player",
+      title: "Player badge",
+      ariaLabel: "Player badge",
+      className: buildClassName(variant, size, shimmer),
+    };
+  }
+
+  return {
+    variant,
+    icon: "◆",
+    label: "Purchased",
+    title: "Purchased through GameZone",
+    ariaLabel: "Purchased badge",
+    className: buildClassName(variant, size, shimmer),
+  };
+}
+
+export function getPlayerStatusBadgeMeta(isPlayerVerified, options = {}) {
+  const variant = isPlayerVerified ? "verified_player" : "neutral";
+  const size = options.size || "table";
+  const shimmer = options.shimmer !== false;
+
+  if (variant === "verified_player") {
+    return {
+      variant,
+      icon: "✦",
+      label: "Player",
+      title: "Marked as player",
+      ariaLabel: "Player badge",
+      className: buildClassName(variant, size, shimmer),
+    };
+  }
+
+  return {
+    variant,
+    icon: "•",
+    label: "No Badge",
+    title: "No player badge",
+    ariaLabel: "No badge",
+    className: buildClassName(variant, size, shimmer),
+  };
 }

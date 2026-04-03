@@ -1339,6 +1339,266 @@ select.input option:checked{
   border-color: #ff466b;
 }
 
+/* Premium holographic badge system (V2) */
+.premiumBadge {
+  --badge-text: #edf4ff;
+  --badge-bg: linear-gradient(155deg, rgba(11, 17, 34, 0.95), rgba(20, 33, 62, 0.93));
+  --badge-border: rgba(151, 178, 241, 0.30);
+  --badge-rim: linear-gradient(110deg, rgba(255, 105, 180, 0.24), rgba(132, 201, 255, 0.22), rgba(188, 140, 255, 0.26));
+  --badge-orb: radial-gradient(circle at 30% 30%, #f7fbff, #b7d4ff 47%, #486ccf 100%);
+  --badge-halo: rgba(99, 179, 237, 0.24);
+  --badge-label-glow: rgba(148, 214, 255, 0.24);
+  --badge-orb-shadow: rgba(124, 196, 255, 0.34);
+  --badge-shadow: 0 10px 24px rgba(0, 0, 0, 0.40), 0 0 22px rgba(96, 165, 250, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.45px;
+  color: var(--badge-text);
+  background: var(--badge-bg);
+  border: 1px solid var(--badge-border);
+  box-shadow: var(--badge-shadow);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+}
+
+.premiumBadge::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--badge-rim);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0.66;
+  pointer-events: none;
+}
+
+.premiumBadge__prism {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(124deg, rgba(255, 114, 198, 0.09) 0%, rgba(255, 114, 198, 0) 36%),
+    linear-gradient(286deg, rgba(121, 220, 255, 0.10) 0%, rgba(121, 220, 255, 0) 44%);
+  pointer-events: none;
+}
+
+.premiumBadge__shine {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.02) 46%),
+    linear-gradient(96deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 34%);
+  pointer-events: none;
+}
+
+.premiumBadge__halo {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  left: -18px;
+  top: -18px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--badge-halo), transparent 70%);
+  pointer-events: none;
+}
+
+.premiumBadge__facet {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(42deg, rgba(255, 255, 255, 0.08), transparent 42%),
+    linear-gradient(228deg, rgba(0, 0, 0, 0.14), transparent 56%);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.premiumBadge__rail {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.06) 28%, rgba(255, 255, 255, 0.06) 72%, transparent 100%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.premiumBadge__orb {
+  width: 19px;
+  height: 19px;
+  min-width: 19px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  z-index: 2;
+  font-size: 9px;
+  font-weight: 900;
+  color: #06111d;
+  background: var(--badge-orb);
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  box-shadow: 0 0 16px var(--badge-orb-shadow), inset 0 1px 2px rgba(255, 255, 255, 0.42), inset -2px -2px 4px rgba(0, 0, 0, 0.24);
+}
+
+.premiumBadge__orb::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  top: 2px;
+  left: 3px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0) 72%);
+  pointer-events: none;
+}
+
+.premiumBadge__orbCore {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 28% 26%, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.04) 56%);
+  pointer-events: none;
+}
+
+.premiumBadge__label {
+  position: relative;
+  z-index: 2;
+  text-shadow: 0 0 12px var(--badge-label-glow);
+}
+
+.premiumBadge--default {
+  font-size: 10px;
+}
+
+.premiumBadge--table {
+  font-size: 9px;
+  letter-spacing: 0.36px;
+  padding: 4px 10px 4px 6px;
+}
+
+.premiumBadge--compact {
+  font-size: 8px;
+  letter-spacing: 0.32px;
+  padding: 3px 8px 3px 5px;
+  gap: 5px;
+}
+
+.premiumBadge--compact .premiumBadge__orb {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  font-size: 7px;
+}
+
+.premiumBadge--admin {
+  --badge-text: #fff8e6;
+  --badge-bg: linear-gradient(150deg, rgba(42, 16, 12, 0.96), rgba(92, 32, 16, 0.94) 44%, rgba(168, 100, 16, 0.86) 100%);
+  --badge-border: rgba(255, 200, 92, 0.46);
+  --badge-rim: linear-gradient(110deg, rgba(255, 244, 200, 0.54), rgba(255, 176, 64, 0.42), rgba(255, 220, 144, 0.50));
+  --badge-orb: radial-gradient(circle at 30% 30%, #fffbf0, #ffdd88 46%, #e8a820 100%);
+  --badge-halo: rgba(251, 191, 36, 0.38);
+  --badge-label-glow: rgba(255, 214, 68, 0.42);
+  --badge-orb-shadow: rgba(255, 200, 60, 0.48);
+  --badge-shadow: 0 12px 30px rgba(0, 0, 0, 0.48), 0 0 26px rgba(255, 180, 40, 0.22), inset 0 1px 2px rgba(255, 255, 255, 0.16);
+}
+
+.premiumBadge--verified_player {
+  --badge-text: #ecfdff;
+  --badge-bg: linear-gradient(150deg, rgba(4, 22, 44, 0.96), rgba(12, 54, 96, 0.94) 44%, rgba(24, 154, 204, 0.88) 100%);
+  --badge-border: rgba(128, 235, 255, 0.42);
+  --badge-rim: linear-gradient(110deg, rgba(170, 244, 255, 0.50), rgba(128, 200, 255, 0.40), rgba(190, 160, 255, 0.40));
+  --badge-orb: radial-gradient(circle at 30% 30%, #f8fdff, #b6f0ff 46%, #2ca8d8 100%);
+  --badge-halo: rgba(34, 211, 238, 0.40);
+  --badge-label-glow: rgba(56, 230, 255, 0.48);
+  --badge-orb-shadow: rgba(64, 224, 255, 0.50);
+  --badge-shadow: 0 12px 30px rgba(0, 0, 0, 0.48), 0 0 26px rgba(56, 189, 248, 0.24), inset 0 1px 2px rgba(255, 255, 255, 0.16);
+}
+
+.premiumBadge--purchased {
+  --badge-text: #fffdf5;
+  --badge-bg: linear-gradient(150deg, rgba(32, 14, 4, 0.96), rgba(84, 40, 12, 0.94) 44%, rgba(180, 110, 20, 0.86) 100%);
+  --badge-border: rgba(255, 192, 88, 0.44);
+  --badge-rim: linear-gradient(110deg, rgba(255, 228, 160, 0.50), rgba(255, 168, 80, 0.40), rgba(255, 224, 160, 0.46));
+  --badge-orb: radial-gradient(circle at 30% 30%, #fffef8, #ffe4a1 46%, #ea9e2e 100%);
+  --badge-halo: rgba(251, 146, 60, 0.36);
+  --badge-label-glow: rgba(255, 168, 60, 0.44);
+  --badge-orb-shadow: rgba(255, 176, 56, 0.44);
+  --badge-shadow: 0 12px 30px rgba(0, 0, 0, 0.48), 0 0 26px rgba(251, 146, 60, 0.22), inset 0 1px 2px rgba(255, 255, 255, 0.16);
+}
+
+.premiumBadge--neutral {
+  --badge-text: #dbe7ff;
+  --badge-bg: linear-gradient(150deg, rgba(17, 22, 33, 0.95), rgba(38, 46, 68, 0.92));
+  --badge-border: rgba(166, 184, 224, 0.26);
+  --badge-rim: linear-gradient(110deg, rgba(186, 196, 224, 0.28), rgba(152, 167, 210, 0.24), rgba(194, 205, 230, 0.26));
+  --badge-orb: radial-gradient(circle at 30% 30%, #f0f4ff, #bcc8eb 48%, #7286b8 100%);
+  --badge-halo: rgba(156, 163, 175, 0.26);
+  --badge-label-glow: rgba(176, 194, 230, 0.24);
+  --badge-orb-shadow: rgba(176, 194, 230, 0.28);
+  --badge-shadow: 0 9px 22px rgba(0, 0, 0, 0.34), 0 0 18px rgba(107, 114, 128, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+.premiumBadge--shimmer::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  transform: translateX(-115%) skewX(-22deg);
+  background: linear-gradient(
+    105deg,
+    rgba(255, 255, 255, 0) 16%,
+    rgba(255, 255, 255, 0.22) 44%,
+    rgba(154, 227, 255, 0.26) 52%,
+    rgba(255, 255, 255, 0) 78%
+  );
+  opacity: 0;
+  pointer-events: none;
+}
+
+.premiumBadge--shimmer:hover {
+  transform: translateY(-2px);
+}
+
+.premiumBadge--shimmer:hover::after {
+  animation: premium-badge-shimmer 1.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+  opacity: 0.95;
+}
+
+@keyframes premium-badge-shimmer {
+  0% {
+    transform: translateX(-115%) skewX(-22deg);
+  }
+  100% {
+    transform: translateX(120%) skewX(-22deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .premiumBadge--shimmer:hover {
+    transform: none;
+  }
+
+  .premiumBadge--shimmer:hover::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* Status badges */
 .adminBadge {
   display: inline-block;
