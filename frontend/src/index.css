@@ -1222,6 +1222,24 @@ select.input option:checked{
   background: rgba(255,255,255,0.10);
 }
 
+select.adminFormField {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+
+select.adminFormField option {
+  background: #0b0c10;
+  color: #fff;
+}
+
+select.adminFormField option:checked {
+  background: #ff2d55;
+  color: #0b0c10;
+}
+
 .adminFormField textarea {
   font-family: "Inter", monospace;
   resize: vertical;
