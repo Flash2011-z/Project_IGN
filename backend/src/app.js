@@ -767,6 +767,42 @@ app.put("/reviews/:reviewId", requireAuth, async (req, res) => {
   }
 });
 
+async function deleteReviewById(client, reviewId, { allowAnyUser = false, currentUserId = null } = {}) {
+  await client.query("BEGIN");
+
+  const existingReview = await client.query(
+    `
+    SELECT user_review_id, user_id, game_id
+    FROM user_review
+    WHERE user_review_id = $1
+    LIMIT 1
+    `,
+    [reviewId]
+  );
+
+  if (existingReview.rowCount === 0) {
+    await client.query("ROLLBACK");
+    return { status: 404, body: { error: "Review not found" } };
+  }
+
+  if (!allowAnyUser && Number(existingReview.rows[0].user_id) !== Number(currentUserId)) {
+    await client.query("ROLLBACK");
+    return { status: 403, body: { error: "Forbidden" } };
+  }
+
+  await client.query("DELETE FROM user_review WHERE user_review_id = $1", [reviewId]);
+
+  await client.query("COMMIT");
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      gameId: existingReview.rows[0].game_id,
+    },
+  };
+}
+
 app.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
   const client = await pool.connect();
 
@@ -778,46 +814,52 @@ app.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid review id or user id" });
     }
 
-    await client.query("BEGIN");
-
-    const existingReview = await client.query(
-      `
-      SELECT user_review_id, user_id, game_id
-      FROM user_review
-      WHERE user_review_id = $1
-      LIMIT 1
-      `,
-      [reviewId]
-    );
-
-    if (existingReview.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Review not found" });
-    }
-
-    if (Number(existingReview.rows[0].user_id) !== userId) {
-      await client.query("ROLLBACK");
-      return res.status(403).json({ error: "Forbidden" });
-    }
-
-    await client.query(
-      "DELETE FROM user_review WHERE user_review_id = $1",
-      [reviewId]
-    );
-
-
-    await client.query("COMMIT");
-
-    return res.json({
-      ok: true,
-      gameId: existingReview.rows[0].game_id
+    const result = await deleteReviewById(client, reviewId, {
+      currentUserId: userId,
     });
+
+    return res.status(result.status).json(
+      result.status === 200
+        ? { ...result.body, id: reviewId }
+        : result.body
+    );
   } catch (err) {
     try {
       await client.query("ROLLBACK");
     } catch (_) { }
 
     console.error("DELETE /reviews/:reviewId error:", err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete("/admin/reviews/:reviewId", requireAuth, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const reviewId = parseInt(req.params.reviewId, 10);
+
+    if (Number.isNaN(reviewId)) {
+      return res.status(400).json({ error: "Invalid review id" });
+    }
+
+    const result = await deleteReviewById(client, reviewId, {
+      allowAnyUser: true,
+    });
+
+    return res.status(result.status).json(
+      result.status === 200
+        ? { ...result.body, id: reviewId }
+        : result.body
+    );
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) { }
+
+    console.error("DELETE /admin/reviews/:reviewId error:", err);
     return res.status(500).json({ error: err.message });
   } finally {
     client.release();
